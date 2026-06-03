@@ -72,7 +72,7 @@ def close_db(_exc):
 def init_db():
     """Create tables and seed default config on first run. Safe to run every startup."""
     with psycopg.connect(DATABASE_URL) as conn:
-        with conn.cursor() as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS requests (
                     id           SERIAL PRIMARY KEY,
