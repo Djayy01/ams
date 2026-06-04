@@ -11,9 +11,10 @@
 
 import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 
-// ─── API base ────────────────────────────────────────────────
-// Your live Render backend — the frontend talks to this for all data.
-const API_BASE = "https://ams-backend-hulo.onrender.com";
+// ─── API base (set VITE_API_URL on Render; falls back to localhost for local dev) ───
+const API_BASE =
+  (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_API_URL) ||
+  "http://localhost:5000";
 
 // ─── Instagram link ──────────────────────────────────────────
 const INSTAGRAM_URL = "https://www.instagram.com/1low_nelson/";
@@ -276,7 +277,7 @@ const Hero = () => {
       </div>
       <div style={{ color:"#ffffff", fontWeight:900, fontSize:m?"1.95rem":"2.7rem", letterSpacing:"-0.01em", lineHeight:1.1, marginBottom:10, textShadow:"0 2px 22px rgba(0,0,0,0.28)" }}>Help is on the way</div>
       <div style={{ color:"rgba(255,255,255,0.9)", fontSize:m?"0.92rem":"1.05rem", fontWeight:500, maxWidth:440, margin:"0 auto", lineHeight:1.5, textShadow:"0 1px 12px rgba(0,0,0,0.22)" }}>
-        Fast, friendly towing and mobile mechanic — request service in under a minute and track your help in real time.
+        Fast, friendly towing and mobile mechanic with over 10 years of hands-on car experience. Request service in under a minute and track your help in real time.
       </div>
       <div style={{ display:"flex", justifyContent:"center", flexWrap:"wrap", gap:m?"8px 10px":14, alignItems:"center", marginTop:18 }}>
         {[["zap","Fast Response","#fbbf24"],["globe","Bilingual","#67e8f9"],["heart","Friendly Service","#fda4af"]].map(([ic,lbl,col])=>(
@@ -718,7 +719,7 @@ export default function App() {
     <MobileCtx.Provider value={isMobile}>
       <div style={{ minHeight:"100vh", fontFamily:"'Work Sans',system-ui,sans-serif", color:C.text, position:"relative", background:"#0e3f63" }}>
         <AuroraBackground/>
-        <div style={{ position:"relative", zIndex:1 }}>
+        <div style={{ position:"relative", zIndex:1, paddingBottom: isMobile ? "calc(56px + env(safe-area-inset-bottom))" : 80 }}>
           <Nav bizName={bizName} isMech={view==="dashboard"} onMechClick={()=>setView("login")}/>
           {globalErr && view==="customer" && (
             <div style={{ maxWidth:600, margin:"14px auto 0", padding:"0 16px" }}><ErrorBar msg={globalErr} onClose={()=>setGlobalErr("")}/></div>
