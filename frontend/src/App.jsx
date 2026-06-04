@@ -1,9 +1,43 @@
+/*
+  AMS — Mobile Mechanic & Towing  ::  Frontend (App.jsx)
+  Talks to the Flask + PostgreSQL backend. Data syncs across all devices.
+  Background: animated aurora gradient (pure CSS — no Tailwind/extra libraries).
+
+  SETUP REMINDER
+    • This is src/App.jsx in your Vite React project.
+    • Point it at your backend via VITE_API_URL (or edit API_BASE below).
+    • Deploy: git add . && git commit -m "ui tweaks" && git push
+*/
+
 import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
+
+// ─── API base ────────────────────────────────────────────────
+// Your live Render backend — the frontend talks to this for all data.
+const API_BASE = "https://ams-backend-hulo.onrender.com";
+
+// ─── Instagram link ──────────────────────────────────────────
+const INSTAGRAM_URL = "https://www.instagram.com/1low_nelson/";
+
+// ─── Token + fetch helper ─────────────────────────────────────
+const getToken = () => { try { return localStorage.getItem("ams-token") || ""; } catch { return ""; } };
+const setToken = (t) => { try { t ? localStorage.setItem("ams-token", t) : localStorage.removeItem("ams-token"); } catch {} };
+
+async function api(path, { method = "GET", body, auth = false } = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (auth) headers.Authorization = `Bearer ${getToken()}`;
+  const res = await fetch(API_BASE + path, { method, headers, ...(body && { body: JSON.stringify(body) }) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || `Request failed (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
 
 // ─── Responsive helpers ───────────────────────────────────────
 const MobileCtx = createContext(false);
 const useMobile = () => useContext(MobileCtx);
-
 function useIsMobile(bp = 640) {
   const get = () => (typeof window !== "undefined" ? window.innerWidth < bp : false);
   const [m, setM] = useState(get);
@@ -16,7 +50,7 @@ function useIsMobile(bp = 640) {
   return m;
 }
 
-// ─── Resource Injection (font, viewport, global CSS) ──────────
+// ─── Resource Injection (font, viewport, global CSS + aurora) ──
 const injectResources = () => {
   if (!document.getElementById("ws-font")) {
     const l = document.createElement("link");
@@ -34,36 +68,62 @@ const injectResources = () => {
     s.id = "ams-global";
     s.textContent = `
       * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-      html, body { margin: 0; padding: 0; overflow-x: hidden; background: #eef4fc; }
+      html, body, #root { margin: 0; padding: 0; overflow-x: hidden; background: #0e3f63; }
       input, textarea, button { font-family: 'Work Sans', system-ui, sans-serif; }
       input[type="time"], input[type="datetime-local"] { color-scheme: light; }
-      input:focus, textarea:focus { border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
-      ::-webkit-scrollbar { width: 8px; height: 8px; }
-      ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: #cdddf0; border-radius: 4px; }
+      input:focus, textarea:focus { border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.18) !important; }
+      /* Hidden scrollbar so the header + content reach the right edge with no gap (page still scrolls) */
+      html { scrollbar-width: none; -ms-overflow-style: none; }
+      ::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+      /* Animated aurora background (pure CSS) */
+      .ams-aurora {
+        background:
+          radial-gradient(45% 45% at 18% 22%, rgba(56,189,248,0.55), transparent 62%),
+          radial-gradient(45% 45% at 82% 18%, rgba(16,185,129,0.50), transparent 62%),
+          radial-gradient(50% 50% at 72% 82%, rgba(125,211,252,0.42), transparent 65%),
+          radial-gradient(55% 55% at 26% 80%, rgba(37,99,235,0.55), transparent 65%),
+          linear-gradient(155deg, #123a6b 0%, #0e5a7a 45%, #0c6b5d 75%, #103f72 100%);
+        background-size: 180% 180%, 180% 180%, 180% 180%, 180% 180%, 100% 100%;
+        background-position: 0% 50%, 100% 50%, 50% 100%, 50% 0%, 0 0;
+        animation: amsAurora 22s ease-in-out infinite;
+      }
+      @keyframes amsAurora {
+        0%, 100% { background-position: 0% 50%, 100% 50%, 50% 100%, 50% 0%, 0 0; }
+        50%      { background-position: 100% 50%, 0% 50%, 50% 0%, 50% 100%, 0 0; }
+      }
+      @media (prefers-reduced-motion: reduce) { .ams-aurora { animation: none; } }
     `;
     document.head.appendChild(s);
   }
 };
 
 // ─── Constants ───────────────────────────────────────────────
-const STORAGE_KEY = "ams-app-v3";
 const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 const DEFAULT_AVAIL = Object.fromEntries(DAYS.map(d=>[d,{on:d!=="Sunday",open:"08:00",close:"18:00"}]));
-const DEFAULT_STATE = { requests:[], availability:DEFAULT_AVAIL, bizName:"AMS", password:"mechanic123", nextId:1 };
 
 const C = {
-  bg:"#eef4fc", surface:"#ffffff", surface2:"#f4f8fd", surface3:"#e7eef8", border:"#dbe6f4",
-  text:"#152840", text2:"#5f7691", text3:"#9fb3cb",
+  surface:"#ffffff", surface2:"#f4f8fd", surface3:"#e7eef8", border:"#dbe6f4",
+  text:"#152840", text2:"#5f7691", text3:"#7a8ea9",
   blue:"#2563eb", blueL:"#3b82f6", sky:"#0ea5e9", amber:"#f59e0b", amberD:"#d97706",
   green:"#16a34a", red:"#ef4444",
 };
+// Colors for text/icons that sit directly ON the aurora background (not in a card)
+const ON = { t:"#ffffff", t2:"rgba(255,255,255,0.86)", t3:"rgba(255,255,255,0.62)", icon:"#7dd3fc" };
 const SM = { pending:{label:"Pending",c:C.amber}, accepted:{label:"Accepted",c:C.blue}, onway:{label:"On the Way",c:C.sky}, done:{label:"Complete",c:C.green}, dismissed:{label:"Dismissed",c:"#94a3b8"} };
 
+// Solid white frosted card that pops on the aurora  (deeper, layered shadow — change #5)
 const card = () => ({
-  background:"rgba(255,255,255,0.86)", backdropFilter:"blur(10px)", WebkitBackdropFilter:"blur(10px)",
-  border:"1px solid rgba(255,255,255,0.9)", boxShadow:"0 6px 22px rgba(37,99,235,0.08)"
+  background:"rgba(255,255,255,0.95)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)",
+  border:"1px solid rgba(255,255,255,0.55)", boxShadow:"0 22px 55px rgba(8,28,52,0.42), 0 8px 22px rgba(8,28,52,0.24)"
 });
+
+// Pill style shared by the hero badges (Trusted Local Service + the feature chips) — change #3
+const heroPill = {
+  display:"inline-flex", alignItems:"center", gap:7, padding:"5px 14px", borderRadius:30,
+  background:"rgba(255,255,255,0.16)", border:"1px solid rgba(255,255,255,0.35)",
+  backdropFilter:"blur(6px)", WebkitBackdropFilter:"blur(6px)"
+};
 
 // ─── SVG Icons ────────────────────────────────────────────────
 const P = {
@@ -86,6 +146,8 @@ const P = {
   zap:"M13 2L3 14h9l-1 8 10-12h-9l1-8z",
   heart:"M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21l8.84-8.84a5.5 5.5 0 0 0 0-7.78z",
   globe:"M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M2 12h20 M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z",
+  refresh:"M23 4v6h-6 M1 20v-6h6 M3.51 9a9 9 0 0 1 14.85-3.36L23 10 M1 14l4.64 4.36A9 9 0 0 0 20.49 15",
+  instagram:"M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5z M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z M17.5 6.5h.01",
 };
 const Ico = ({d,size=16,color="currentColor",style={}}) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,...style}}>
@@ -93,95 +155,10 @@ const Ico = ({d,size=16,color="currentColor",style={}}) => (
   </svg>
 );
 
-// ─── Storage ─────────────────────────────────────────────────
-async function loadState(){try{const r=await window.storage.get(STORAGE_KEY);return r?{...DEFAULT_STATE,...JSON.parse(r.value)}:DEFAULT_STATE;}catch{return DEFAULT_STATE;}}
-async function saveState(s){try{await window.storage.set(STORAGE_KEY,JSON.stringify(s));}catch{}}
-
-// ─── Lightweight Animated Canvas Background (no heavy libs) ───
-// Draws a perspective grid of dots + faint links that gently wave,
-// giving a 3D modular-network feel with near-zero load cost.
-const CanvasBackground = () => {
-  const ref = useRef(null);
-  useEffect(() => {
-    const canvas = ref.current; if (!canvas) return;
-    const ctx = canvas.getContext("2d"); if (!ctx) return;
-    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const isMobile = window.innerWidth < 768;
-    const COLS = isMobile ? 12 : 22;
-    const ROWS = isMobile ? 13 : 18;
-    let W = 0, H = 0, raf, running = true, t = 0;
-    const mouse = { x: 0 };
-
-    const resize = () => {
-      W = window.innerWidth; H = window.innerHeight;
-      const dpr = Math.min(window.devicePixelRatio || 1, isMobile ? 1.5 : 2);
-      canvas.width = Math.floor(W * dpr); canvas.height = Math.floor(H * dpr);
-      canvas.style.width = W + "px"; canvas.style.height = H + "px";
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    };
-
-    const draw = () => {
-      ctx.clearRect(0, 0, W, H);
-      const horizon = H * 0.16;
-      const centerX = W / 2 + mouse.x * 28;
-      const pts = [];
-      for (let i = 0; i <= ROWS; i++) {
-        const td = i / ROWS;                       // 0 far → 1 near
-        const persp = 0.18 + td * 0.82;
-        const baseY = horizon + Math.pow(td, 1.5) * (H - horizon);
-        const spread = (0.22 + td * 1.08) * W;
-        const row = [];
-        for (let j = 0; j <= COLS; j++) {
-          const fx = j / COLS - 0.5;
-          const x = centerX + fx * spread;
-          const wave = Math.sin(i * 0.5 + t * 1.0 + Math.cos(j * 0.4)) * 9 * persp
-                     + Math.sin(j * 0.6 - t * 0.75) * 5 * persp;
-          row.push({ x, y: baseY + wave, persp, depth: td });
-        }
-        pts.push(row);
-      }
-      // links
-      ctx.lineWidth = 1;
-      for (let i = 0; i <= ROWS; i++) for (let j = 0; j <= COLS; j++) {
-        const p = pts[i][j];
-        const a = 0.04 + p.depth * 0.20;
-        ctx.strokeStyle = `rgba(120,170,235,${a})`;
-        if (j < COLS) { const r = pts[i][j + 1]; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(r.x, r.y); ctx.stroke(); }
-        if (i < ROWS) { const d = pts[i + 1][j]; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(d.x, d.y); ctx.stroke(); }
-      }
-      // dots
-      for (let i = 0; i <= ROWS; i++) for (let j = 0; j <= COLS; j++) {
-        const p = pts[i][j];
-        const rad = 1 + p.persp * 1.7;
-        const a = 0.16 + p.depth * 0.38;
-        const accent = ((i * 7 + j * 13) % 11 === 0);
-        ctx.fillStyle = accent ? `rgba(14,165,233,${a})` : `rgba(59,130,246,${a * 0.9})`;
-        ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, Math.PI * 2); ctx.fill();
-      }
-    };
-
-    const loop = () => { raf = requestAnimationFrame(loop); t += 0.011; draw(); };
-
-    resize();
-    draw();
-    if (!reduce) loop();
-
-    const onR = () => { resize(); draw(); };
-    window.addEventListener("resize", onR);
-    const onMM = e => { mouse.x = (e.clientX / W - 0.5) * 2; };
-    if (!isMobile) window.addEventListener("mousemove", onMM);
-    const onVis = () => { if (document.hidden) { running = false; cancelAnimationFrame(raf); } else if (!running && !reduce) { running = true; loop(); } };
-    document.addEventListener("visibilitychange", onVis);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize", onR);
-      window.removeEventListener("mousemove", onMM);
-      document.removeEventListener("visibilitychange", onVis);
-    };
-  }, []);
-  return <canvas ref={ref} style={{ position:"fixed", inset:0, zIndex:0, pointerEvents:"none" }} />;
-};
+// ─── Animated Aurora Background (pure CSS, no libraries) ──────
+const AuroraBackground = () => (
+  <div className="ams-aurora" aria-hidden="true" style={{ position:"fixed", inset:0, zIndex:0, pointerEvents:"none" }} />
+);
 
 // ─── Shared UI ────────────────────────────────────────────────
 const Badge = ({ status }) => {
@@ -189,14 +166,15 @@ const Badge = ({ status }) => {
   return <span style={{ background:m.c+"1f", color:m.c, border:`1px solid ${m.c}40`, borderRadius:5, padding:"2px 8px", fontSize:"0.65rem", fontWeight:800, letterSpacing:"0.07em", textTransform:"uppercase" }}>{m.label}</span>;
 };
 
-const Btn = ({ children, onClick, color=C.blue, outline, small, full, style={}, icon }) => (
-  <button onClick={onClick} style={{ background:outline?"#fff":color, color:outline?color:"#fff", border:`1.5px solid ${outline?C.border:color}`, borderRadius:9, fontWeight:700, cursor:"pointer", padding:small?"8px 14px":"12px 20px", fontSize:small?"0.75rem":"0.85rem", width:full?"100%":undefined, letterSpacing:"0.04em", textTransform:"uppercase", display:"inline-flex", alignItems:"center", gap:7, justifyContent:"center", transition:"all .15s", boxShadow:outline?"none":`0 4px 14px ${color}33` }}
-    onMouseOver={e=>{e.currentTarget.style.transform="translateY(-1px)";e.currentTarget.style.opacity="0.94";}} onMouseOut={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.opacity="1";}}>
+const Btn = ({ children, onClick, color=C.blue, outline, small, full, disabled, style={}, icon }) => (
+  <button onClick={onClick} disabled={disabled} style={{ background:outline?"#fff":color, color:outline?color:"#fff", border:`1.5px solid ${outline?C.border:color}`, borderRadius:9, fontWeight:700, cursor:disabled?"not-allowed":"pointer", opacity:disabled?0.6:1, padding:small?"8px 14px":"12px 20px", fontSize:small?"0.75rem":"0.85rem", width:full?"100%":undefined, letterSpacing:"0.04em", textTransform:"uppercase", display:"inline-flex", alignItems:"center", gap:7, justifyContent:"center", transition:"all .15s", boxShadow:outline?"none":`0 4px 14px ${color}40`, ...style }}
+    onMouseOver={e=>{ if(!disabled){e.currentTarget.style.transform="translateY(-1px)";e.currentTarget.style.opacity="0.94";} }} onMouseOut={e=>{ e.currentTarget.style.transform="translateY(0)"; e.currentTarget.style.opacity=disabled?"0.6":"1"; }}>
     {icon&&<Ico d={P[icon]} size={14}/>}{children}
   </button>
 );
 
-const fieldStyle = { background:C.surface2, border:`1px solid ${C.border}`, color:C.text, borderRadius:9, padding:"11px 12px", width:"100%", fontSize:"0.92rem", outline:"none", boxSizing:"border-box", transition:"border-color .15s, box-shadow .15s" };
+// Field style — added a soft, slightly darker shadow so inputs contrast against the white form (change #2)
+const fieldStyle = { background:C.surface2, border:`1px solid ${C.border}`, color:C.text, borderRadius:9, padding:"11px 12px", width:"100%", fontSize:"0.92rem", outline:"none", boxSizing:"border-box", boxShadow:"0 2px 5px rgba(8,28,52,0.12)", transition:"border-color .15s, box-shadow .15s" };
 
 const Inp = ({ label, icon, ...p }) => (
   <div style={{ marginBottom:14 }}>
@@ -231,6 +209,21 @@ const Lbl = ({ children, icon, style={} }) => (
   </div>
 );
 
+const ErrorBar = ({ msg, onClose }) => msg ? (
+  <div style={{ background:"rgba(254,242,242,0.97)", border:`1px solid ${C.red}55`, color:"#b91c1c", borderRadius:10, padding:"10px 14px", marginBottom:14, fontSize:"0.82rem", display:"flex", gap:8, alignItems:"center", justifyContent:"space-between", boxShadow:"0 6px 18px rgba(8,28,52,0.12)" }}>
+    <span style={{ display:"flex", gap:8, alignItems:"center" }}><Ico d={P.alert} size={14} color="#b91c1c"/>{msg}</span>
+    {onClose && <span onClick={onClose} style={{ cursor:"pointer", fontWeight:800, opacity:0.7 }}>✕</span>}
+  </div>
+) : null;
+
+// ─── Section heading that sits on the aurora ──────────────────
+const SectionHead = ({ icon, children }) => (
+  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16 }}>
+    <Ico d={P[icon]} size={18} color={ON.icon}/>
+    <div style={{ color:ON.t, fontWeight:800, fontSize:"1.15rem" }}>{children}</div>
+  </div>
+);
+
 // ─── Google Maps ──────────────────────────────────────────────
 const MapEmbed = ({ location }) => {
   const m = useMobile();
@@ -245,11 +238,11 @@ const MapEmbed = ({ location }) => {
   );
 };
 
-// ─── Nav ─────────────────────────────────────────────────────
+// ─── Nav (frosted glass over the aurora) — made slightly taller (change #4) ──────────────────
 const Nav = ({ bizName, isMech, onMechClick }) => {
   const m = useMobile();
   return (
-    <div style={{ position:"sticky", top:0, zIndex:100, background:"rgba(255,255,255,0.82)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)", borderBottom:`1px solid ${C.border}`, padding:m?"10px 14px":"12px 18px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+    <div style={{ position:"sticky", top:0, zIndex:100, background:"rgba(255,255,255,0.86)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)", borderBottom:"1px solid rgba(255,255,255,0.4)", padding:m?"13px 14px":"16px 18px", display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"0 4px 20px rgba(8,28,52,0.10)" }}>
       <div style={{ display:"flex", alignItems:"center", gap:10 }}>
         <div style={{ background:`linear-gradient(135deg, ${C.blue}, ${C.sky})`, borderRadius:10, width:m?30:34, height:m?30:34, display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 4px 12px ${C.blue}40` }}>
           <Ico d={P.wrench} size={m?16:18} color="#fff"/>
@@ -259,29 +252,35 @@ const Nav = ({ bizName, isMech, onMechClick }) => {
           {!m && <span style={{ color:C.text3, fontSize:"0.64rem", marginLeft:8, textTransform:"uppercase", letterSpacing:"0.1em", fontWeight:600 }}>Mobile Mechanic & Towing</span>}
         </div>
       </div>
-      {!isMech&&<Btn small outline onClick={onMechClick} icon="lock">Login</Btn>}
+      <div style={{ display:"flex", alignItems:"center", gap:m?8:10 }}>
+        <a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" aria-label="Instagram"
+           style={{ display:"inline-flex", alignItems:"center", justifyContent:"center", width:m?34:36, height:m?34:36, borderRadius:9, border:`1.5px solid ${C.border}`, background:"#fff", cursor:"pointer", transition:"transform .15s", flexShrink:0 }}
+           onMouseOver={e=>{e.currentTarget.style.transform="translateY(-1px)";}}
+           onMouseOut={e=>{e.currentTarget.style.transform="translateY(0)";}}>
+          <Ico d={P.instagram} size={m?18:19} color="#E4405F"/>
+        </a>
+        {!isMech&&<Btn small outline onClick={onMechClick} icon="lock">Login</Btn>}
+      </div>
     </div>
   );
 };
 
-// ─── Hero Banner ──────────────────────────────────────────────
-const Hero = ({ bizName }) => {
+// ─── Hero Banner (light text on the aurora) ───────────────────
+const Hero = () => {
   const m = useMobile();
   return (
-    <div style={{ padding:m?"30px 16px 18px":"50px 20px 28px", textAlign:"center", position:"relative" }}>
-      <div style={{ display:"inline-flex", alignItems:"center", gap:7, padding:"5px 14px", borderRadius:30, background:`${C.blue}12`, border:`1px solid ${C.blue}25`, marginBottom:16 }}>
-        <Ico d={P.shield} size={14} color={C.blue}/>
-        <span style={{ color:C.blue, fontSize:"0.72rem", fontWeight:700, letterSpacing:"0.06em", textTransform:"uppercase" }}>Trusted Local Service</span>
+    <div style={{ padding:m?"30px 16px 18px":"54px 20px 30px", textAlign:"center", position:"relative" }}>
+      <div style={{ ...heroPill, marginBottom:16 }}>
+        <Ico d={P.shield} size={14} color="#ffffff"/>
+        <span style={{ color:"#ffffff", fontSize:"0.72rem", fontWeight:700, letterSpacing:"0.06em", textTransform:"uppercase" }}>Trusted Local Service</span>
       </div>
-      <div style={{ color:C.text, fontWeight:900, fontSize:m?"1.9rem":"2.6rem", letterSpacing:"-0.01em", lineHeight:1.1, marginBottom:10 }}>
-        Help is on the way
-      </div>
-      <div style={{ color:C.text2, fontSize:m?"0.92rem":"1.05rem", fontWeight:500, maxWidth:440, margin:"0 auto", lineHeight:1.5 }}>
+      <div style={{ color:"#ffffff", fontWeight:900, fontSize:m?"1.95rem":"2.7rem", letterSpacing:"-0.01em", lineHeight:1.1, marginBottom:10, textShadow:"0 2px 22px rgba(0,0,0,0.28)" }}>Help is on the way</div>
+      <div style={{ color:"rgba(255,255,255,0.9)", fontSize:m?"0.92rem":"1.05rem", fontWeight:500, maxWidth:440, margin:"0 auto", lineHeight:1.5, textShadow:"0 1px 12px rgba(0,0,0,0.22)" }}>
         Fast, friendly towing and mobile mechanic — request service in under a minute and track your help in real time.
       </div>
-      <div style={{ display:"flex", justifyContent:"center", flexWrap:"wrap", gap:m?"8px 12px":16, alignItems:"center", marginTop:18 }}>
-        {[["zap","Fast Response",C.amber],["globe","Bilingual",C.blue],["heart","Friendly Service",C.sky]].map(([ic,lbl,col])=>(
-          <div key={lbl} style={{ display:"flex", alignItems:"center", gap:6, color:C.text2, fontSize:m?"0.72rem":"0.8rem", fontWeight:600 }}>
+      <div style={{ display:"flex", justifyContent:"center", flexWrap:"wrap", gap:m?"8px 10px":14, alignItems:"center", marginTop:18 }}>
+        {[["zap","Fast Response","#fbbf24"],["globe","Bilingual","#67e8f9"],["heart","Friendly Service","#fda4af"]].map(([ic,lbl,col])=>(
+          <div key={lbl} style={{ ...heroPill, color:"rgba(255,255,255,0.92)", fontSize:m?"0.74rem":"0.82rem", fontWeight:600 }}>
             <Ico d={P[ic]} size={14} color={col}/>{lbl}
           </div>
         ))}
@@ -291,44 +290,49 @@ const Hero = ({ bizName }) => {
 };
 
 // ─── Customer Form ────────────────────────────────────────────
-const CustomerForm = ({ onSubmit, availability, bizName }) => {
+const CustomerForm = ({ onSubmit, availability }) => {
   const m = useMobile();
   const [f,setF] = useState({ name:"",phone:"",loc:"",svc:"Towing",year:"",make:"",model:"",issue:"",urg:"ASAP",schedTime:"" });
   const [warn,setWarn] = useState(false);
   const [err,setErr] = useState("");
   const [mapLoc,setMapLoc] = useState("");
+  const [submitting,setSubmitting] = useState(false);
   const set = (k,v) => setF(p=>({...p,[k]:v}));
 
   useEffect(()=>{
     const now=new Date();
     const day=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][now.getDay()];
-    const av=availability[day];
+    const av=(availability||DEFAULT_AVAIL)[day];
     if(!av||!av.on){setWarn(true);return;}
     const cur=now.getHours()*60+now.getMinutes();
     const [oh,om]=av.open.split(":").map(Number);
     const [ch,cm]=av.close.split(":").map(Number);
-    if(cur<oh*60+om||cur>ch*60+cm) setWarn(true);
+    setWarn(cur<oh*60+om||cur>ch*60+cm);
   },[availability]);
 
-  const submit = () => {
+  const submit = async () => {
     for(const k of ["name","phone","loc","year","make","model","issue"]) if(!f[k].trim()){setErr("Please fill in all required fields.");return;}
     if(f.urg==="Scheduled"&&!f.schedTime){setErr("Please select a scheduled time.");return;}
-    setErr(""); onSubmit({...f});
+    setErr(""); setSubmitting(true);
+    try { await onSubmit({...f}); }
+    catch (e) { setErr(e.message || "Couldn't submit — please check your connection and try again."); }
+    finally { setSubmitting(false); }
   };
 
   return (
     <div>
-      <Hero bizName={bizName}/>
+      <Hero/>
       <div style={{ padding:m?"0 12px 24px":"0 16px 24px", maxWidth:600, margin:"0 auto" }}>
         {warn&&(
-          <div style={{ background:`${C.amber}14`, borderRadius:12, padding:"11px 14px", marginBottom:16, color:C.amberD, fontSize:"0.82rem", display:"flex", gap:8, alignItems:"flex-start", border:`1px solid ${C.amber}33` }}>
+          <div style={{ background:"rgba(255,251,235,0.96)", borderRadius:12, padding:"11px 14px", marginBottom:16, color:C.amberD, fontSize:"0.82rem", display:"flex", gap:8, alignItems:"flex-start", border:`1px solid ${C.amber}55`, boxShadow:"0 8px 24px rgba(8,28,52,0.18)" }}>
             <Ico d={P.clock} size={15} color={C.amber} style={{marginTop:1,flexShrink:0}}/>We may be outside normal business hours right now — you can still submit and we'll reach out as soon as we can.
           </div>
         )}
         <Card style={{ marginBottom:20 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:11, marginBottom:18 }}>
+          {/* Centered header (change #1) */}
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:11, marginBottom:18 }}>
             <div style={{ background:`linear-gradient(135deg, ${C.blue}, ${C.sky})`, borderRadius:11, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, boxShadow:`0 4px 12px ${C.blue}33` }}><Ico d={P.zap} size={20} color="#fff"/></div>
-            <div>
+            <div style={{ textAlign:"left" }}>
               <div style={{ color:C.text, fontWeight:800, fontSize:"1.15rem" }}>Request Service</div>
               <div style={{ color:C.text2, fontSize:"0.82rem" }}>Tell us where you are and what you need</div>
             </div>
@@ -364,8 +368,8 @@ const CustomerForm = ({ onSubmit, availability, bizName }) => {
               {f.urg==="Scheduled"&&<Inp label="Scheduled Date & Time" icon="cal" type="datetime-local" value={f.schedTime} onChange={e=>set("schedTime",e.target.value)}/>}
             </>
           )}
-          {err&&<div style={{ color:C.red, fontSize:"0.82rem", marginBottom:12, display:"flex", gap:6, alignItems:"center" }}><Ico d={P.alert} size={13} color={C.red}/>{err}</div>}
-          <Btn full onClick={submit} icon="zap">Submit Request</Btn>
+          <ErrorBar msg={err} onClose={()=>setErr("")}/>
+          <Btn full onClick={submit} icon="zap" disabled={submitting}>{submitting?"Submitting…":"Submit Request"}</Btn>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginTop:12, color:C.text3, fontSize:"0.74rem" }}>
             <Ico d={P.shield} size={12} color={C.text3}/>Your info is only used to dispatch help
           </div>
@@ -375,19 +379,30 @@ const CustomerForm = ({ onSubmit, availability, bizName }) => {
   );
 };
 
-// ─── Confirmation ─────────────────────────────────────────────
+// ─── Confirmation (polls backend for live status) ─────────────
 const STEPS = ["pending","accepted","onway","done"];
 const SLBLS = ["Submitted","Accepted","On the Way","Complete"];
 
-const Confirmation = ({ req, onNew }) => {
+const Confirmation = ({ initialReq, onNew }) => {
   const m = useMobile();
+  const [req,setReq] = useState(initialReq);
+
+  useEffect(()=>{
+    let alive = true;
+    const tick = async () => {
+      try { const fresh = await api("/api/requests/"+initialReq.id); if(alive) setReq(fresh); } catch {}
+    };
+    const iv = setInterval(tick, 4000);
+    return () => { alive = false; clearInterval(iv); };
+  },[initialReq.id]);
+
   const idx = req.status==="dismissed"?0:STEPS.indexOf(req.status);
   return (
     <div style={{ padding:m?"22px 12px":"28px 16px", maxWidth:600, margin:"0 auto" }}>
       <div style={{ textAlign:"center", marginBottom:24 }}>
-        <div style={{ width:66, height:66, background:`linear-gradient(135deg, ${C.blue}, ${C.sky})`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 14px", boxShadow:`0 8px 24px ${C.blue}40` }}><Ico d={P.check} size={32} color="#fff"/></div>
-        <div style={{ color:C.text, fontWeight:900, fontSize:"1.4rem" }}>Request Submitted!</div>
-        <div style={{ color:C.text2, fontSize:"0.88rem", marginTop:6 }}>Thanks — we've got it. Track your help below.</div>
+        <div style={{ width:66, height:66, background:`linear-gradient(135deg, ${C.blue}, ${C.sky})`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 14px", boxShadow:"0 10px 30px rgba(0,0,0,0.3)" }}><Ico d={P.check} size={32} color="#fff"/></div>
+        <div style={{ color:ON.t, fontWeight:900, fontSize:"1.4rem", textShadow:"0 2px 16px rgba(0,0,0,0.28)" }}>Request Submitted!</div>
+        <div style={{ color:ON.t2, fontSize:"0.88rem", marginTop:6 }}>Thanks — we've got it. Track your help below (updates live).</div>
       </div>
       <Card style={{ marginBottom:20 }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", position:"relative", padding:"10px 0" }}>
@@ -417,10 +432,16 @@ const Confirmation = ({ req, onNew }) => {
 };
 
 // ─── Login ────────────────────────────────────────────────────
-const Login = ({ password:correct, onSuccess, onBack }) => {
+const Login = ({ onLogin, onBack }) => {
   const m = useMobile();
-  const [pw,setPw]=useState(""); const [err,setErr]=useState("");
-  const go=()=>{ if(pw===correct) onSuccess(); else setErr("Incorrect password."); };
+  const [pw,setPw]=useState(""); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+  const go = async () => {
+    if(!pw) return;
+    setBusy(true); setErr("");
+    try { await onLogin(pw); }
+    catch (e) { setErr(e.message || "Login failed — check your connection."); }
+    finally { setBusy(false); }
+  };
   return (
     <div style={{ padding:m?"24px 16px":32, maxWidth:380, margin:m?"24px auto":"48px auto" }}>
       <Card>
@@ -430,8 +451,8 @@ const Login = ({ password:correct, onSuccess, onBack }) => {
           <div style={{ color:C.text2, fontSize:"0.8rem", marginTop:4 }}>Dashboard access only</div>
         </div>
         <Inp label="Password" icon="lock" type="password" placeholder="Enter password" value={pw} onChange={e=>{setPw(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&go()}/>
-        {err&&<div style={{ color:C.red, fontSize:"0.82rem", marginBottom:12, display:"flex", gap:6 }}><Ico d={P.alert} size={13} color={C.red}/>{err}</div>}
-        <Btn full onClick={go} icon="lock" style={{ marginBottom:10 }}>Enter Dashboard</Btn>
+        <ErrorBar msg={err} onClose={()=>setErr("")}/>
+        <Btn full onClick={go} icon="lock" disabled={busy} style={{ marginBottom:10 }}>{busy?"Signing in…":"Enter Dashboard"}</Btn>
         <Btn full outline onClick={onBack}>← Back</Btn>
       </Card>
     </div>
@@ -439,10 +460,11 @@ const Login = ({ password:correct, onSuccess, onBack }) => {
 };
 
 // ─── Request Card ─────────────────────────────────────────────
-const ReqCard = ({ req, onAction }) => {
+const ReqCard = ({ req, onAction, busyId }) => {
   const [showMap,setShowMap]=useState(false);
   const active=["pending","accepted","onway"].includes(req.status);
   const svcCol = req.svc==="Towing" ? C.blue : C.sky;
+  const busy = busyId === req.id;
   return (
     <Card accent={active}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10, gap:8 }}>
@@ -468,22 +490,51 @@ const ReqCard = ({ req, onAction }) => {
       {req.issue&&<div style={{ color:C.text2, fontSize:"0.83rem", marginBottom:10, fontStyle:"italic", padding:"9px 11px", background:C.surface2, borderRadius:8 }}>"{req.issue}"</div>}
       <div style={{ color:C.text3, fontSize:"0.7rem", marginBottom:12, display:"flex", alignItems:"center", gap:5 }}><Ico d={P.clock} size={11} color={C.text3}/>Submitted {new Date(req.submittedAt).toLocaleString()}</div>
       <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-        {req.status==="pending"&&<><Btn small onClick={()=>onAction(req.id,"accepted")} icon="check">Accept</Btn><Btn small outline color={C.text2} onClick={()=>onAction(req.id,"dismissed")}>Dismiss</Btn></>}
-        {req.status==="accepted"&&<Btn small color={C.sky} onClick={()=>onAction(req.id,"onway")} icon="tow">On the Way</Btn>}
-        {req.status==="onway"&&<Btn small color={C.green} onClick={()=>onAction(req.id,"done")} icon="check">Mark Done</Btn>}
+        {req.status==="pending"&&<><Btn small onClick={()=>onAction(req.id,"accepted")} icon="check" disabled={busy}>Accept</Btn><Btn small outline color={C.text2} onClick={()=>onAction(req.id,"dismissed")} disabled={busy}>Dismiss</Btn></>}
+        {req.status==="accepted"&&<Btn small color={C.sky} onClick={()=>onAction(req.id,"onway")} icon="tow" disabled={busy}>On the Way</Btn>}
+        {req.status==="onway"&&<Btn small color={C.green} onClick={()=>onAction(req.id,"done")} icon="check" disabled={busy}>Mark Done</Btn>}
       </div>
     </Card>
   );
 };
 
 // ─── Dashboard ────────────────────────────────────────────────
-const Dashboard = ({ state, dispatch, onLogout }) => {
+const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangePassword, onLogout }) => {
   const m = useMobile();
   const [tab,setTab]=useState("queue");
-  const { requests, availability, bizName, password } = state;
+  const [requests,setRequests]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [err,setErr]=useState("");
+  const [busyId,setBusyId]=useState(null);
+
   const [newBiz,setNewBiz]=useState(bizName);
   const [curPw,setCurPw]=useState(""); const [newPw,setNewPw]=useState(""); const [confPw,setConfPw]=useState("");
   const [pwMsg,setPwMsg]=useState(""); const [bizMsg,setBizMsg]=useState("");
+
+  const authApi = useCallback(async (path, opts={}) => {
+    try { return await api(path, { ...opts, auth:true }); }
+    catch (e) { if (e.status === 401) onLogout(); throw e; }
+  }, [onLogout]);
+
+  const loadRequests = useCallback(async () => {
+    try { const list = await authApi("/api/requests"); setRequests(list); setErr(""); }
+    catch (e) { if (e.status !== 401) setErr(e.message); }
+    finally { setLoading(false); }
+  }, [authApi]);
+
+  useEffect(()=>{
+    loadRequests();
+    const iv = setInterval(loadRequests, 8000);
+    return () => clearInterval(iv);
+  },[loadRequests]);
+
+  const updateStatus = async (id, status) => {
+    setBusyId(id);
+    try { const updated = await authApi("/api/requests/"+id, { method:"PATCH", body:{ status } });
+      setRequests(rs => rs.map(r => r.id===id ? updated : r)); setErr(""); }
+    catch (e) { if (e.status !== 401) setErr(e.message); }
+    finally { setBusyId(null); }
+  };
 
   const pending=requests.filter(r=>r.status==="pending").length;
   const active=requests.filter(r=>["accepted","onway"].includes(r.status)).length;
@@ -494,30 +545,39 @@ const Dashboard = ({ state, dispatch, onLogout }) => {
   const todayJobs=requests.filter(r=>["accepted","onway","done"].includes(r.status)&&new Date(r.submittedAt).toDateString()===todayStr)
     .sort((a,b)=>(a.urg==="Scheduled"?new Date(a.schedTime):new Date(a.submittedAt))-(b.urg==="Scheduled"?new Date(b.schedTime):new Date(b.submittedAt)));
 
-  const savePw=()=>{
-    if(curPw!==password){setPwMsg("Current password incorrect.");return;}
-    if(newPw.length<6){setPwMsg("Min 6 characters.");return;}
-    if(newPw!==confPw){setPwMsg("Passwords don't match.");return;}
-    dispatch({type:"SET_PW",password:newPw}); setPwMsg("✓ Password updated!"); setCurPw(""); setNewPw(""); setConfPw("");
+  const saveBiz = async () => {
+    try { await onBizName(newBiz); setBizMsg("✓ Saved!"); setTimeout(()=>setBizMsg(""),2500); }
+    catch (e) { setBizMsg(e.message); }
   };
+  const savePw = async () => {
+    if(newPw.length<6){setPwMsg("New password must be at least 6 characters.");return;}
+    if(newPw!==confPw){setPwMsg("Passwords don't match.");return;}
+    try { await onChangePassword(curPw, newPw); setPwMsg("✓ Password updated!"); setCurPw(""); setNewPw(""); setConfPw(""); }
+    catch (e) { setPwMsg(e.message); }
+  };
+
+  const toggleDay = (day) => { const next={...availability,[day]:{...availability[day],on:!availability[day].on}}; onAvailability(next); };
+  const setTime = (day,field,val) => { const next={...availability,[day]:{...availability[day],[field]:val}}; onAvailability(next); };
 
   const TABS=[{id:"queue",label:"Queue",icon:"list"},{id:"schedule",label:"Schedule",icon:"cal"},{id:"avail",label:"Hours",icon:"clock"},{id:"settings",label:"Settings",icon:"cog"}];
   const STATS=[[pending,"Pending",C.amber,"alert"],[active,"Active",C.blue,"zap"],[doneToday,"Done Today",C.green,"check"],[allDone,"All-Time",C.sky,"list"]];
+  const av = availability || DEFAULT_AVAIL;
 
   return (
     <div style={{ maxWidth:700, margin:"0 auto" }}>
-      <div style={{ display:"flex", gap:m?4:6, padding:m?"12px 10px":"14px", borderBottom:`1px solid ${C.border}` }}>
+      <div style={{ display:"flex", gap:m?4:6, padding:m?"12px 10px":"14px", borderBottom:"1px solid rgba(255,255,255,0.18)" }}>
         {TABS.map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, minWidth:0, padding:m?"9px 2px":"9px 4px", borderRadius:10, border:`1px solid ${tab===t.id?C.blue:C.border}`, cursor:"pointer", background:tab===t.id?C.blue:C.surface, color:tab===t.id?"#fff":C.text2, fontWeight:700, fontSize:m?"0.58rem":"0.7rem", letterSpacing:"0.03em", textTransform:"uppercase", display:"flex", alignItems:"center", justifyContent:"center", gap:m?3:6, transition:"all .15s", boxShadow:tab===t.id?`0 4px 12px ${C.blue}30`:"none" }}>
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, minWidth:0, padding:m?"9px 2px":"9px 4px", borderRadius:10, border:`1px solid ${tab===t.id?C.blue:"rgba(255,255,255,0.4)"}`, cursor:"pointer", background:tab===t.id?C.blue:"rgba(255,255,255,0.92)", color:tab===t.id?"#fff":C.text2, fontWeight:700, fontSize:m?"0.58rem":"0.7rem", letterSpacing:"0.03em", textTransform:"uppercase", display:"flex", alignItems:"center", justifyContent:"center", gap:m?3:6, transition:"all .15s", boxShadow:tab===t.id?`0 4px 12px ${C.blue}40`:"0 2px 10px rgba(8,28,52,0.12)" }}>
             <Ico d={P[t.icon]} size={13} color={tab===t.id?"#fff":C.text2}/>{t.label}
           </button>
         ))}
       </div>
 
       <div style={{ padding:m?"16px 12px":18 }}>
-        {/* QUEUE */}
+        <ErrorBar msg={err} onClose={()=>setErr("")}/>
+
         {tab==="queue"&&<>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
             {STATS.map(([n,l,c,ic])=>(
               <div key={l} style={{ ...card(), borderRadius:14, padding:"15px 16px", borderTop:`4px solid ${c}` }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -528,17 +588,21 @@ const Dashboard = ({ state, dispatch, onLogout }) => {
               </div>
             ))}
           </div>
-          {requests.length===0
-            ?<div style={{ color:C.text3, textAlign:"center", padding:"56px 0", fontSize:"0.9rem" }}><Ico d={P.list} size={34} color={C.surface3} style={{ display:"block", margin:"0 auto 12px" }}/>No requests yet.</div>
-            :[...requests].reverse().map(r=><ReqCard key={r.id} req={r} onAction={(id,s)=>dispatch({type:"STATUS",id,status:s})}/>)
+          <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:8 }}>
+            <button onClick={loadRequests} style={{ background:"transparent", border:"none", color:ON.t2, fontSize:"0.74rem", fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", gap:5 }}><Ico d={P.refresh} size={13} color={ON.t2}/>Refresh</button>
+          </div>
+          {loading
+            ? <div style={{ color:ON.t2, textAlign:"center", padding:"48px 0", fontSize:"0.9rem" }}>Loading requests…</div>
+            : requests.length===0
+              ? <div style={{ color:ON.t3, textAlign:"center", padding:"56px 0", fontSize:"0.9rem" }}><Ico d={P.list} size={34} color="rgba(255,255,255,0.35)" style={{ display:"block", margin:"0 auto 12px" }}/>No requests yet.</div>
+              : requests.map(r=><ReqCard key={r.id} req={r} onAction={updateStatus} busyId={busyId}/>)
           }
         </>}
 
-        {/* SCHEDULE */}
         {tab==="schedule"&&<>
-          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16 }}><Ico d={P.cal} size={18} color={C.blue}/><div style={{ color:C.text, fontWeight:800, fontSize:"1.15rem" }}>Today's Jobs</div></div>
+          <SectionHead icon="cal">Today's Jobs</SectionHead>
           {todayJobs.length===0
-            ?<div style={{ color:C.text3, textAlign:"center", padding:"56px 0" }}><Ico d={P.cal} size={34} color={C.surface3} style={{ display:"block", margin:"0 auto 12px" }}/>No jobs scheduled for today.</div>
+            ?<div style={{ color:ON.t3, textAlign:"center", padding:"56px 0" }}><Ico d={P.cal} size={34} color="rgba(255,255,255,0.35)" style={{ display:"block", margin:"0 auto 12px" }}/>No jobs scheduled for today.</div>
             :todayJobs.map(r=>(
               <Card key={r.id} accent>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
@@ -554,40 +618,38 @@ const Dashboard = ({ state, dispatch, onLogout }) => {
           }
         </>}
 
-        {/* AVAILABILITY */}
         {tab==="avail"&&<>
-          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16 }}><Ico d={P.clock} size={18} color={C.blue}/><div style={{ color:C.text, fontWeight:800, fontSize:"1.15rem" }}>Business Hours</div></div>
+          <SectionHead icon="clock">Business Hours</SectionHead>
           {DAYS.map(day=>{
-            const av=availability[day];
+            const d=av[day];
             return (
-              <div key={day} style={{ ...card(), borderLeft:`4px solid ${av.on?C.green:C.surface3}`, borderRadius:12, padding:"12px 14px", marginBottom:10, transition:"border-color .2s" }}>
+              <div key={day} style={{ ...card(), borderLeft:`4px solid ${d.on?C.green:C.surface3}`, borderRadius:12, padding:"12px 14px", marginBottom:10, transition:"border-color .2s" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:m?8:12, flexWrap:"wrap" }}>
-                  <div style={{ minWidth:m?64:94, color:av.on?C.text:C.text3, fontWeight:700, fontSize:"0.85rem" }}>{day}</div>
-                  <div onClick={()=>dispatch({type:"AVAIL_TOGGLE",day})} style={{ width:40, height:22, borderRadius:11, cursor:"pointer", position:"relative", background:av.on?C.green:C.surface3, transition:"background .2s", flexShrink:0 }}>
-                    <div style={{ position:"absolute", top:3, left:av.on?21:3, width:16, height:16, borderRadius:"50%", background:"#fff", transition:"left .2s", boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }}/>
+                  <div style={{ minWidth:m?64:94, color:d.on?C.text:C.text3, fontWeight:700, fontSize:"0.85rem" }}>{day}</div>
+                  <div onClick={()=>toggleDay(day)} style={{ width:40, height:22, borderRadius:11, cursor:"pointer", position:"relative", background:d.on?C.green:C.surface3, transition:"background .2s", flexShrink:0 }}>
+                    <div style={{ position:"absolute", top:3, left:d.on?21:3, width:16, height:16, borderRadius:"50%", background:"#fff", transition:"left .2s", boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }}/>
                   </div>
-                  {av.on?<div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <input type="time" value={av.open} onChange={e=>dispatch({type:"AVAIL_TIME",day,field:"open",val:e.target.value})} style={{ background:C.surface2, border:`1px solid ${C.border}`, color:C.text, borderRadius:8, padding:"6px 8px", fontSize:"0.82rem", outline:"none" }}/>
+                  {d.on?<div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <input type="time" value={d.open} onChange={e=>setTime(day,"open",e.target.value)} style={{ background:C.surface2, border:`1px solid ${C.border}`, color:C.text, borderRadius:8, padding:"6px 8px", fontSize:"0.82rem", outline:"none" }}/>
                     <span style={{ color:C.text3, fontSize:"0.78rem" }}>to</span>
-                    <input type="time" value={av.close} onChange={e=>dispatch({type:"AVAIL_TIME",day,field:"close",val:e.target.value})} style={{ background:C.surface2, border:`1px solid ${C.border}`, color:C.text, borderRadius:8, padding:"6px 8px", fontSize:"0.82rem", outline:"none" }}/>
+                    <input type="time" value={d.close} onChange={e=>setTime(day,"close",e.target.value)} style={{ background:C.surface2, border:`1px solid ${C.border}`, color:C.text, borderRadius:8, padding:"6px 8px", fontSize:"0.82rem", outline:"none" }}/>
                   </div>:<span style={{ color:C.text3, fontSize:"0.78rem", fontStyle:"italic" }}>Closed</span>}
                 </div>
               </div>
             );
           })}
-          <div style={{ color:C.text3, fontSize:"0.75rem", marginTop:8, display:"flex", gap:5, alignItems:"center" }}><Ico d={P.check} size={11} color={C.green}/>Changes save automatically.</div>
+          <div style={{ color:ON.t3, fontSize:"0.75rem", marginTop:8, display:"flex", gap:5, alignItems:"center" }}><Ico d={P.check} size={11} color="#86efac"/>Changes save automatically.</div>
         </>}
 
-        {/* SETTINGS */}
         {tab==="settings"&&<>
-          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16 }}><Ico d={P.cog} size={18} color={C.blue}/><div style={{ color:C.text, fontWeight:800, fontSize:"1.15rem" }}>Settings</div></div>
+          <SectionHead icon="cog">Settings</SectionHead>
           <Card>
             <Lbl icon="user">Business Name</Lbl>
             <div style={{ display:"flex", gap:8, marginTop:8 }}>
               <input value={newBiz} onChange={e=>setNewBiz(e.target.value)} style={{ ...fieldStyle, flex:1 }}/>
-              <Btn small onClick={()=>{dispatch({type:"SET_BIZ",bizName:newBiz});setBizMsg("✓ Saved!");setTimeout(()=>setBizMsg(""),2500);}} icon="check">Save</Btn>
+              <Btn small onClick={saveBiz} icon="check">Save</Btn>
             </div>
-            {bizMsg&&<div style={{ color:C.green, fontSize:"0.78rem", marginTop:6, fontWeight:600 }}>{bizMsg}</div>}
+            {bizMsg&&<div style={{ color:bizMsg.startsWith("✓")?C.green:C.red, fontSize:"0.78rem", marginTop:6, fontWeight:600 }}>{bizMsg}</div>}
           </Card>
           <Card>
             <Lbl icon="lock">Change Password</Lbl>
@@ -606,50 +668,65 @@ const Dashboard = ({ state, dispatch, onLogout }) => {
   );
 };
 
-// ─── Reducer ─────────────────────────────────────────────────
-function reducer(s, a) {
-  switch(a.type) {
-    case "SUBMIT": return {...s,requests:[...s.requests,{...a.req,id:s.nextId,status:"pending",submittedAt:new Date().toISOString()}],nextId:s.nextId+1};
-    case "STATUS": return {...s,requests:s.requests.map(r=>r.id===a.id?{...r,status:a.status}:r)};
-    case "SET_BIZ": return {...s,bizName:a.bizName};
-    case "SET_PW": return {...s,password:a.password};
-    case "AVAIL_TOGGLE": return {...s,availability:{...s.availability,[a.day]:{...s.availability[a.day],on:!s.availability[a.day].on}}};
-    case "AVAIL_TIME": return {...s,availability:{...s.availability,[a.day]:{...s.availability[a.day],[a.field]:a.val}}};
-    default: return s;
-  }
-}
-
 // ─── Root ─────────────────────────────────────────────────────
 export default function App() {
   const isMobile = useIsMobile(640);
-  const [appState,setAppState]=useState(DEFAULT_STATE);
   const [view,setView]=useState("customer");
-  const [activeReqId,setActiveReqId]=useState(null);
-  const [bgReady,setBgReady]=useState(false);
+  const [bizName,setBizName]=useState("AMS");
+  const [availability,setAvailability]=useState(DEFAULT_AVAIL);
+  const [activeReq,setActiveReq]=useState(null);
+  const [globalErr,setGlobalErr]=useState("");
 
   useEffect(()=>{
     injectResources();
-    loadState().then(setAppState);
-    const id = setTimeout(()=>setBgReady(true), 40);
-    return ()=>clearTimeout(id);
+    (async () => {
+      try {
+        const [settings, avail] = await Promise.all([ api("/api/settings"), api("/api/availability") ]);
+        if (settings?.bizName) setBizName(settings.bizName);
+        if (avail) setAvailability(avail);
+      } catch {
+        setGlobalErr("Couldn't reach the server. Make sure the backend is running.");
+      }
+    })();
   },[]);
 
-  const dispatch=useCallback(action=>{
-    setAppState(prev=>{const next=reducer(prev,action);saveState(next);return next;});
-  },[]);
-
-  const liveReq = activeReqId!=null ? appState.requests.find(r=>r.id===activeReqId) : null;
+  const handleSubmit = async (formData) => {
+    const created = await api("/api/requests", { method:"POST", body:formData });
+    setActiveReq(created);
+    setView("confirm");
+  };
+  const handleLogin = async (password) => {
+    const { token } = await api("/api/login", { method:"POST", body:{ password } });
+    setToken(token);
+    setView("dashboard");
+  };
+  const handleLogout = () => { setToken(""); setView("customer"); };
+  const handleAvailability = async (next) => {
+    setAvailability(next);
+    try { await api("/api/availability", { method:"PUT", body:next, auth:true }); }
+    catch (e) { if (e.status === 401) handleLogout(); }
+  };
+  const handleBizName = async (name) => {
+    const res = await api("/api/settings/business-name", { method:"PUT", body:{ bizName:name }, auth:true });
+    setBizName(res.bizName);
+  };
+  const handleChangePassword = async (current, nw) => {
+    await api("/api/change-password", { method:"POST", body:{ current, new:nw }, auth:true });
+  };
 
   return (
     <MobileCtx.Provider value={isMobile}>
-      <div style={{ minHeight:"100vh", fontFamily:"'Work Sans',system-ui,sans-serif", color:C.text, position:"relative", background:"linear-gradient(180deg, #f3f8ff 0%, #e9f1fc 100%)" }}>
-        {bgReady && <CanvasBackground/>}
+      <div style={{ minHeight:"100vh", fontFamily:"'Work Sans',system-ui,sans-serif", color:C.text, position:"relative", background:"#0e3f63" }}>
+        <AuroraBackground/>
         <div style={{ position:"relative", zIndex:1 }}>
-          <Nav bizName={appState.bizName} isMech={view==="dashboard"} onMechClick={()=>setView("login")}/>
-          {view==="customer"&&<CustomerForm availability={appState.availability} bizName={appState.bizName} onSubmit={req=>{dispatch({type:"SUBMIT",req});setActiveReqId(appState.nextId);setView("confirm");}}/>}
-          {view==="confirm"&&liveReq&&<Confirmation req={appState.requests.find(r=>r.id===activeReqId)||liveReq} onNew={()=>{setActiveReqId(null);setView("customer");}}/>}
-          {view==="login"&&<Login password={appState.password} onSuccess={()=>setView("dashboard")} onBack={()=>setView("customer")}/>}
-          {view==="dashboard"&&<Dashboard state={appState} dispatch={dispatch} onLogout={()=>setView("customer")}/>}
+          <Nav bizName={bizName} isMech={view==="dashboard"} onMechClick={()=>setView("login")}/>
+          {globalErr && view==="customer" && (
+            <div style={{ maxWidth:600, margin:"14px auto 0", padding:"0 16px" }}><ErrorBar msg={globalErr} onClose={()=>setGlobalErr("")}/></div>
+          )}
+          {view==="customer"&&<CustomerForm availability={availability} onSubmit={handleSubmit}/>}
+          {view==="confirm"&&activeReq&&<Confirmation initialReq={activeReq} onNew={()=>{setActiveReq(null);setView("customer");}}/>}
+          {view==="login"&&<Login onLogin={handleLogin} onBack={()=>setView("customer")}/>}
+          {view==="dashboard"&&<Dashboard availability={availability} onAvailability={handleAvailability} bizName={bizName} onBizName={handleBizName} onChangePassword={handleChangePassword} onLogout={handleLogout}/>}
         </div>
       </div>
     </MobileCtx.Provider>
