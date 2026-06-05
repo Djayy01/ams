@@ -2,9 +2,15 @@
   AMS — Mobile Mechanic & Towing  ::  Frontend (App.jsx)
   Talks to the Flask + PostgreSQL backend. Data syncs across all devices.
 
-  Features: aurora background, tap-to-call, tap-to-navigate, request lookup
-  by phone, EN/ES bilingual toggle (customer side), job notes, earnings
-  tracking, job search, and a "we'll call you back" busy mode.
+  Features: tap-to-call, tap-to-navigate, track-by-phone lookup, EN/ES toggle,
+  job notes, earnings + analytics, dashboard search, busy mode, new-request
+  alert (sound + browser notification), customer cancel, ETA, status timestamps,
+  returning-customer prefill, CSV export, repeat-customer flag, reactivate, honeypot.
+
+  SETUP REMINDER
+    • This is src/App.jsx in your Vite React project.
+    • Point it at your backend via VITE_API_URL on Render.
+    • Deploy: git add . && git commit -m "features" && git push
 */
 
 import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
@@ -15,13 +21,18 @@ const API_BASE =
   "http://localhost:5000";
 
 // ─── Instagram link ──────────────────────────────────────────
-const INSTAGRAM_URL = "https://www.instagram.com/placeholder/";
+const INSTAGRAM_URL = "https://www.instagram.com/1low_nelson/";
 
-// ─── Token + lang persistence ─────────────────────────────────
+// ─── Local storage helpers ────────────────────────────────────
 const getToken = () => { try { return localStorage.getItem("ams-token") || ""; } catch { return ""; } };
 const setToken = (t) => { try { t ? localStorage.setItem("ams-token", t) : localStorage.removeItem("ams-token"); } catch {} };
 const getLang  = () => { try { return localStorage.getItem("ams-lang") || "en"; } catch { return "en"; } };
 const setLangLS = (l) => { try { localStorage.setItem("ams-lang", l); } catch {} };
+const getSavedCustomer = () => { try { return JSON.parse(localStorage.getItem("ams-customer") || "{}") || {}; } catch { return {}; } };
+const saveCustomer = (c) => { try { localStorage.setItem("ams-customer", JSON.stringify(c)); } catch {} };
+const clearSavedCustomer = () => { try { localStorage.removeItem("ams-customer"); } catch {} };
+const getAlerts = () => { try { return localStorage.getItem("ams-alerts") === "1"; } catch { return false; } };
+const setAlertsLS = (on) => { try { on ? localStorage.setItem("ams-alerts","1") : localStorage.removeItem("ams-alerts"); } catch {} };
 
 async function api(path, { method = "GET", body, auth = false } = {}) {
   const headers = { "Content-Type": "application/json" };
@@ -35,75 +46,6 @@ async function api(path, { method = "GET", body, auth = false } = {}) {
   }
   return data;
 }
-
-// ─── Translations (customer-facing) ───────────────────────────
-const T = {
-  en: {
-    nav_tagline:"Mobile Mechanic & Towing", nav_login:"Login",
-    hero_badge:"Trusted Local Service", hero_title:"Help is on the way",
-    hero_desc:"Fast, friendly towing and mobile mechanic with over 10 years of hands-on car experience. Request service in under a minute and track your help in real time.",
-    feat_fast:"Fast Response", feat_bilingual:"Bilingual", feat_friendly:"Friendly Service",
-    track_cta:"Already requested help? Track it",
-    busy_banner:"We're slammed right now. Leave your info and we'll call you back as soon as we can.",
-    afterhours:"We may be outside normal business hours right now — you can still submit and we'll reach out as soon as we can.",
-    form_title:"Request Service", form_subtitle:"Tell us where you are and what you need",
-    f_name:"Your Name", f_name_ph:"Full name", f_phone:"Phone Number", f_phone_ph:"(555) 000-0000",
-    f_loc:"Your Location", f_loc_ph:"Address or intersection", f_svc:"Service Type",
-    svc_towing:"Towing", svc_mechanical:"Mechanical", f_vehicle:"Vehicle Info",
-    f_year:"Year", f_make:"Make", f_model:"Model", f_issue:"Describe the Issue",
-    f_issue_ph:"What's going on with your vehicle?", f_appt:"Appointment",
-    appt_notice:"Mobile mechanic visits are by appointment, based on availability — pick a date and time and we'll confirm.",
-    f_pref_time:"Preferred Date & Time", f_urgency:"Urgency", urg_asap:"ASAP", urg_scheduled:"Scheduled",
-    f_sched_time:"Scheduled Date & Time", err_required:"Please fill in all required fields.",
-    err_sched:"Please select a scheduled time.", err_submit:"Couldn't submit — please check your connection and try again.",
-    submit:"Submit Request", submit_busy:"Request a Callback", submitting:"Submitting…",
-    privacy:"Your info is only used to dispatch help", map_label:"Location Map",
-    conf_title:"Request Submitted!", conf_subtitle:"Thanks — we've got it. Track your help below (updates live).",
-    step_submitted:"Submitted", step_accepted:"Accepted", step_onway:"On the Way", step_done:"Complete",
-    job_details:"Job Details", d_name:"Name", d_phone:"Phone", d_service:"Service",
-    d_urgency:"Urgency", d_vehicle:"Vehicle", d_location:"Location", d_issue:"Issue",
-    submit_another:"Submit Another Request",
-    lookup_title:"Track Your Request", lookup_subtitle:"Enter the phone number you used to request service.",
-    lookup_phone:"Phone Number", lookup_btn:"Find My Request", lookup_searching:"Searching…",
-    lookup_none:"No requests found for that number. Double-check it, or submit a new request.",
-    lookup_back:"← Back", lookup_multiple:"Showing your most recent request.",
-    lookup_track_title:"Your Request", lookup_track_subtitle:"Here's the latest on your request (updates live).",
-  },
-  es: {
-    nav_tagline:"Mecánico Móvil y Grúa", nav_login:"Acceder",
-    hero_badge:"Servicio Local de Confianza", hero_title:"La ayuda está en camino",
-    hero_desc:"Mecánico móvil y servicio de grúa rápido y amable, con más de 10 años de experiencia con autos. Solicita servicio en menos de un minuto y sigue tu ayuda en tiempo real.",
-    feat_fast:"Respuesta Rápida", feat_bilingual:"Bilingüe", feat_friendly:"Servicio Amable",
-    track_cta:"¿Ya pediste ayuda? Síguela aquí",
-    busy_banner:"Estamos muy ocupados en este momento. Deja tus datos y te llamaremos lo antes posible.",
-    afterhours:"Puede que estemos fuera del horario normal en este momento — aún puedes enviar tu solicitud y te contactaremos lo antes posible.",
-    form_title:"Solicitar Servicio", form_subtitle:"Dinos dónde estás y qué necesitas",
-    f_name:"Tu Nombre", f_name_ph:"Nombre completo", f_phone:"Número de Teléfono", f_phone_ph:"(555) 000-0000",
-    f_loc:"Tu Ubicación", f_loc_ph:"Dirección o intersección", f_svc:"Tipo de Servicio",
-    svc_towing:"Grúa", svc_mechanical:"Mecánico", f_vehicle:"Información del Vehículo",
-    f_year:"Año", f_make:"Marca", f_model:"Modelo", f_issue:"Describe el Problema",
-    f_issue_ph:"¿Qué le pasa a tu vehículo?", f_appt:"Cita",
-    appt_notice:"Las visitas del mecánico móvil son con cita, según disponibilidad — elige fecha y hora y te confirmaremos.",
-    f_pref_time:"Fecha y Hora Preferida", f_urgency:"Urgencia", urg_asap:"Lo Antes Posible", urg_scheduled:"Programado",
-    f_sched_time:"Fecha y Hora Programada", err_required:"Por favor completa todos los campos requeridos.",
-    err_sched:"Por favor selecciona una fecha y hora.", err_submit:"No se pudo enviar — revisa tu conexión e inténtalo de nuevo.",
-    submit:"Enviar Solicitud", submit_busy:"Solicitar una Llamada", submitting:"Enviando…",
-    privacy:"Tu información solo se usa para enviar ayuda", map_label:"Mapa de Ubicación",
-    conf_title:"¡Solicitud Enviada!", conf_subtitle:"Gracias — la recibimos. Sigue tu ayuda abajo (se actualiza en vivo).",
-    step_submitted:"Enviada", step_accepted:"Aceptada", step_onway:"En Camino", step_done:"Completada",
-    job_details:"Detalles del Trabajo", d_name:"Nombre", d_phone:"Teléfono", d_service:"Servicio",
-    d_urgency:"Urgencia", d_vehicle:"Vehículo", d_location:"Ubicación", d_issue:"Problema",
-    submit_another:"Enviar Otra Solicitud",
-    lookup_title:"Sigue Tu Solicitud", lookup_subtitle:"Ingresa el número de teléfono que usaste para pedir servicio.",
-    lookup_phone:"Número de Teléfono", lookup_btn:"Buscar Mi Solicitud", lookup_searching:"Buscando…",
-    lookup_none:"No se encontraron solicitudes con ese número. Verifícalo o envía una nueva solicitud.",
-    lookup_back:"← Volver", lookup_multiple:"Mostrando tu solicitud más reciente.",
-    lookup_track_title:"Tu Solicitud", lookup_track_subtitle:"Aquí está lo último de tu solicitud (se actualiza en vivo).",
-  },
-};
-
-const LangCtx = createContext({ lang:"en", setLang:()=>{}, t:(k)=>k });
-const useLang = () => useContext(LangCtx);
 
 // ─── Responsive helpers ───────────────────────────────────────
 const MobileCtx = createContext(false);
@@ -119,6 +61,94 @@ function useIsMobile(bp = 640) {
   }, [bp]);
   return m;
 }
+
+// ─── Language / translations ──────────────────────────────────
+const STR = {
+  en: {
+    tagline:"Mobile Mechanic & Towing", login:"Login",
+    trustedLocal:"Trusted Local Service", helpOnWay:"Help is on the way",
+    heroDesc:"Fast, friendly towing and mobile mechanic with over 10 years of hands-on car experience. Request service in under a minute and track your help in real time.",
+    fastResponse:"Fast Response", bilingual:"Bilingual", friendlyService:"Friendly Service",
+    busyBanner:"We're extra busy right now — leave your details and we'll call you back as soon as we can.",
+    afterHours:"We may be outside normal business hours right now — you can still submit and we'll reach out as soon as we can.",
+    requestService:"Request Service", requestCallback:"Request a Callback",
+    formSubtitle:"Tell us where you are and what you need",
+    yourName:"Your Name", fullName:"Full name", phoneNumber:"Phone Number",
+    yourLocation:"Your Location", addressPlaceholder:"Address or intersection",
+    serviceType:"Service Type", towing:"Towing", mechanical:"Mechanical",
+    vehicleInfo:"Vehicle Info", year:"Year", make:"Make", model:"Model",
+    describeIssue:"Describe the Issue", issuePlaceholder:"What's going on with your vehicle?",
+    appointment:"Appointment", apptNote:"Mobile mechanic visits are by appointment, based on availability — pick a date and time and we'll confirm.",
+    preferredTime:"Preferred Date & Time", urgency:"Urgency", asap:"ASAP", scheduled:"Scheduled",
+    scheduledTime:"Scheduled Date & Time", submitRequest:"Submit Request", submitting:"Submitting…",
+    infoNote:"Your info is only used to dispatch help",
+    fillRequired:"Please fill in all required fields.", pickTime:"Please select a scheduled time.",
+    submitError:"Couldn't submit — please check your connection and try again.",
+    trackExisting:"Already requested help? Track it here",
+    prefillNote:"We filled in your details from last time — update anything that changed.", clear:"Clear",
+    requestSubmitted:"Request Submitted!", callbackReceived:"Request Received!",
+    confirmThanks:"Thanks — we've got it. Track your help below (updates live).",
+    stepSubmitted:"Submitted", stepAccepted:"Accepted", stepOnway:"On the Way", stepComplete:"Complete",
+    jobDetails:"Job Details", name:"Name", phone:"Phone", service:"Service", vehicle:"Vehicle",
+    location:"Location", issue:"Issue", submitAnother:"Submit Another Request",
+    etaArrival:"Estimated arrival",
+    cancelRequest:"Cancel this request", cancelConfirm:"Are you sure you want to cancel? This can't be undone.",
+    cancelYes:"Yes, cancel it", cancelKeep:"Keep my request", cancelling:"Cancelling…",
+    cancelError:"Couldn't cancel — please try again.",
+    requestCancelledTitle:"Request Cancelled", requestCancelledBody:"This request has been cancelled. Need help again? You can submit a new request anytime.",
+    trackTitle:"Track Your Request", trackSubtitle:"Enter the phone number you used when you requested help.",
+    findRequest:"Find My Request", searching:"Searching…",
+    noRequests:"No requests found for that number. Double-check it, or submit a new request.",
+    enterValidPhone:"Please enter a valid phone number.",
+    back:"← Back to home", searchAgain:"Search a different number",
+    showingRecent:"Showing your most recent request.",
+    mechLogin:"Mechanic Login", dashOnly:"Dashboard access only",
+    password:"Password", enterPassword:"Enter password", enterDashboard:"Enter Dashboard", signingIn:"Signing in…",
+  },
+  es: {
+    tagline:"Mecánico Móvil y Grúa", login:"Acceder",
+    trustedLocal:"Servicio Local de Confianza", helpOnWay:"La ayuda está en camino",
+    heroDesc:"Grúa y mecánico móvil rápido y amable con más de 10 años de experiencia práctica con autos. Solicita servicio en menos de un minuto y sigue tu ayuda en tiempo real.",
+    fastResponse:"Respuesta Rápida", bilingual:"Bilingüe", friendlyService:"Servicio Amable",
+    busyBanner:"Estamos muy ocupados ahora mismo — déjanos tus datos y te llamamos lo antes posible.",
+    afterHours:"Puede que estemos fuera del horario habitual ahora mismo — aún puedes enviar tu solicitud y te contactaremos lo antes posible.",
+    requestService:"Solicitar Servicio", requestCallback:"Solicitar una Llamada",
+    formSubtitle:"Dinos dónde estás y qué necesitas",
+    yourName:"Tu Nombre", fullName:"Nombre completo", phoneNumber:"Número de Teléfono",
+    yourLocation:"Tu Ubicación", addressPlaceholder:"Dirección o cruce de calles",
+    serviceType:"Tipo de Servicio", towing:"Grúa", mechanical:"Mecánico",
+    vehicleInfo:"Información del Vehículo", year:"Año", make:"Marca", model:"Modelo",
+    describeIssue:"Describe el Problema", issuePlaceholder:"¿Qué le pasa a tu vehículo?",
+    appointment:"Cita", apptNote:"Las visitas del mecánico móvil son con cita, según disponibilidad — elige fecha y hora y lo confirmamos.",
+    preferredTime:"Fecha y Hora Preferida", urgency:"Urgencia", asap:"Lo Antes Posible", scheduled:"Programado",
+    scheduledTime:"Fecha y Hora Programada", submitRequest:"Enviar Solicitud", submitting:"Enviando…",
+    infoNote:"Tu información solo se usa para enviarte ayuda",
+    fillRequired:"Por favor completa todos los campos requeridos.", pickTime:"Por favor selecciona una fecha y hora.",
+    submitError:"No se pudo enviar — revisa tu conexión e inténtalo de nuevo.",
+    trackExisting:"¿Ya pediste ayuda? Sigue tu solicitud aquí",
+    prefillNote:"Completamos tus datos de la última vez — actualiza lo que haya cambiado.", clear:"Borrar",
+    requestSubmitted:"¡Solicitud Enviada!", callbackReceived:"¡Solicitud Recibida!",
+    confirmThanks:"Gracias — la recibimos. Sigue tu ayuda abajo (se actualiza en vivo).",
+    stepSubmitted:"Enviada", stepAccepted:"Aceptada", stepOnway:"En Camino", stepComplete:"Completa",
+    jobDetails:"Detalles del Trabajo", name:"Nombre", phone:"Teléfono", service:"Servicio", vehicle:"Vehículo",
+    location:"Ubicación", issue:"Problema", submitAnother:"Enviar Otra Solicitud",
+    etaArrival:"Llegada estimada",
+    cancelRequest:"Cancelar esta solicitud", cancelConfirm:"¿Seguro que quieres cancelar? Esto no se puede deshacer.",
+    cancelYes:"Sí, cancelar", cancelKeep:"Mantener mi solicitud", cancelling:"Cancelando…",
+    cancelError:"No se pudo cancelar — inténtalo de nuevo.",
+    requestCancelledTitle:"Solicitud Cancelada", requestCancelledBody:"Esta solicitud ha sido cancelada. ¿Necesitas ayuda otra vez? Puedes enviar una nueva solicitud cuando quieras.",
+    trackTitle:"Sigue Tu Solicitud", trackSubtitle:"Ingresa el número de teléfono que usaste al pedir ayuda.",
+    findRequest:"Buscar Mi Solicitud", searching:"Buscando…",
+    noRequests:"No se encontraron solicitudes con ese número. Verifícalo o envía una nueva solicitud.",
+    enterValidPhone:"Por favor ingresa un número de teléfono válido.",
+    back:"← Volver al inicio", searchAgain:"Buscar otro número",
+    showingRecent:"Mostrando tu solicitud más reciente.",
+    mechLogin:"Acceso del Mecánico", dashOnly:"Solo acceso al panel",
+    password:"Contraseña", enterPassword:"Ingresa la contraseña", enterDashboard:"Entrar al Panel", signingIn:"Accediendo…",
+  },
+};
+const LangCtx = createContext({ lang:"en", setLang:()=>{}, t:(k)=>k });
+const useLang = () => useContext(LangCtx);
 
 // ─── Resource Injection (font, viewport, global CSS + aurora) ──
 const injectResources = () => {
@@ -174,6 +204,7 @@ const injectResources = () => {
 // ─── Constants ───────────────────────────────────────────────
 const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 const DEFAULT_AVAIL = Object.fromEntries(DAYS.map(d=>[d,{on:d!=="Sunday",open:"08:00",close:"18:00"}]));
+const STEPS = ["pending","accepted","onway","done"];
 
 const C = {
   surface:"#ffffff", surface2:"#f4f8fd", surface3:"#e7eef8", border:"#dbe6f4",
@@ -182,23 +213,24 @@ const C = {
   green:"#16a34a", red:"#ef4444",
 };
 const ON = { t:"#ffffff", t2:"rgba(255,255,255,0.86)", t3:"rgba(255,255,255,0.62)", icon:"#7dd3fc" };
-const SM = { pending:{label:"Pending",c:C.amber}, accepted:{label:"Accepted",c:C.blue}, onway:{label:"On the Way",c:C.sky}, done:{label:"Complete",c:C.green}, dismissed:{label:"Dismissed",c:"#94a3b8"} };
+const SM = { pending:{label:"Pending",c:C.amber}, accepted:{label:"Accepted",c:C.blue}, onway:{label:"On the Way",c:C.sky}, done:{label:"Complete",c:C.green}, dismissed:{label:"Dismissed",c:"#94a3b8"}, cancelled:{label:"Cancelled",c:"#94a3b8"} };
 
 const card = () => ({
   background:"rgba(255,255,255,0.95)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)",
   border:"1px solid rgba(255,255,255,0.55)", boxShadow:"0 22px 55px rgba(8,28,52,0.42), 0 8px 22px rgba(8,28,52,0.24)"
 });
-
 const heroPill = {
   display:"inline-flex", alignItems:"center", gap:7, padding:"5px 14px", borderRadius:30,
   background:"rgba(255,255,255,0.16)", border:"1px solid rgba(255,255,255,0.35)",
   backdropFilter:"blur(6px)", WebkitBackdropFilter:"blur(6px)"
 };
 
-const parsePrice = (p) => { const n = parseFloat(String(p||"").replace(/[^0-9.]/g,"")); return isNaN(n)?0:n; };
-const fmtMoney = (n) => "$" + n.toLocaleString(undefined, { maximumFractionDigits:2 });
-const telHref = (phone) => "tel:" + String(phone||"").replace(/[^0-9+]/g,"");
-const dirHref = (loc) => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(loc||"")}`;
+// ─── Helpers ──────────────────────────────────────────────────
+const formatPrice = (p) => { const n = String(p||"").replace(/[^0-9.]/g,""); return n ? "$"+n : ""; };
+const priceNum   = (p) => parseFloat(String(p||"").replace(/[^0-9.]/g,"")) || 0;
+const mapsDir    = (loc) => "https://www.google.com/maps/dir/?api=1&destination=" + encodeURIComponent(loc || "");
+const fmtTime    = (iso) => { try { return new Date(iso).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}); } catch { return ""; } };
+const doneDate   = (r) => (r.statusTimes && r.statusTimes.done) ? new Date(r.statusTimes.done) : new Date(r.submittedAt);
 
 // ─── SVG Icons ────────────────────────────────────────────────
 const P = {
@@ -225,8 +257,9 @@ const P = {
   instagram:"M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5z M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z M17.5 6.5h.01",
   search:"M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.35-4.35",
   nav:"M3 11l19-9-9 19-2-8-8-2z",
-  dollar:"M12 1v22 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
-  note:"M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z",
+  edit:"M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z",
+  bell:"M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9 M13.73 21a2 2 0 0 1-3.46 0",
+  download:"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3",
 };
 const Ico = ({d,size=16,color="currentColor",style={}}) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,...style}}>
@@ -234,7 +267,6 @@ const Ico = ({d,size=16,color="currentColor",style={}}) => (
   </svg>
 );
 
-// ─── Animated Aurora Background ───────────────────────────────
 const AuroraBackground = () => (
   <div className="ams-aurora" aria-hidden="true" style={{ position:"fixed", inset:0, zIndex:0, pointerEvents:"none" }} />
 );
@@ -245,12 +277,13 @@ const Badge = ({ status }) => {
   return <span style={{ background:m.c+"1f", color:m.c, border:`1px solid ${m.c}40`, borderRadius:5, padding:"2px 8px", fontSize:"0.65rem", fontWeight:800, letterSpacing:"0.07em", textTransform:"uppercase" }}>{m.label}</span>;
 };
 
-const Btn = ({ children, onClick, color=C.blue, outline, small, full, disabled, style={}, icon }) => (
-  <button onClick={onClick} disabled={disabled} style={{ background:outline?"#fff":color, color:outline?color:"#fff", border:`1.5px solid ${outline?C.border:color}`, borderRadius:9, fontWeight:700, cursor:disabled?"not-allowed":"pointer", opacity:disabled?0.6:1, padding:small?"8px 14px":"12px 20px", fontSize:small?"0.75rem":"0.85rem", width:full?"100%":undefined, letterSpacing:"0.04em", textTransform:"uppercase", display:"inline-flex", alignItems:"center", gap:7, justifyContent:"center", transition:"all .15s", boxShadow:outline?"none":`0 4px 14px ${color}40`, ...style }}
-    onMouseOver={e=>{ if(!disabled){e.currentTarget.style.transform="translateY(-1px)";e.currentTarget.style.opacity="0.94";} }} onMouseOut={e=>{ e.currentTarget.style.transform="translateY(0)"; e.currentTarget.style.opacity=disabled?"0.6":"1"; }}>
-    {icon&&<Ico d={P[icon]} size={14}/>}{children}
-  </button>
-);
+const Btn = ({ children, onClick, color=C.blue, outline, small, full, disabled, style={}, icon, href, target }) => {
+  const s = { background:outline?"#fff":color, color:outline?color:"#fff", border:`1.5px solid ${outline?C.border:color}`, borderRadius:9, fontWeight:700, cursor:disabled?"not-allowed":"pointer", opacity:disabled?0.6:1, padding:small?"8px 14px":"12px 20px", fontSize:small?"0.75rem":"0.85rem", width:full?"100%":undefined, letterSpacing:"0.04em", textTransform:"uppercase", display:"inline-flex", alignItems:"center", gap:7, justifyContent:"center", transition:"all .15s", boxShadow:outline?"none":`0 4px 14px ${color}40`, textDecoration:"none", boxSizing:"border-box", ...style };
+  const over = e=>{ if(!disabled){e.currentTarget.style.transform="translateY(-1px)";e.currentTarget.style.opacity="0.94";} };
+  const out  = e=>{ e.currentTarget.style.transform="translateY(0)"; e.currentTarget.style.opacity=disabled?"0.6":"1"; };
+  if (href) return <a href={href} target={target} rel={target==="_blank"?"noopener noreferrer":undefined} style={s} onMouseOver={over} onMouseOut={out}>{icon&&<Ico d={P[icon]} size={14}/>}{children}</a>;
+  return <button onClick={onClick} disabled={disabled} style={s} onMouseOver={over} onMouseOut={out}>{icon&&<Ico d={P[icon]} size={14}/>}{children}</button>;
+};
 
 const fieldStyle = { background:C.surface2, border:`1px solid ${C.border}`, color:C.text, borderRadius:9, padding:"11px 12px", width:"100%", fontSize:"0.92rem", outline:"none", boxSizing:"border-box", boxShadow:"0 2px 5px rgba(8,28,52,0.12)", transition:"border-color .15s, box-shadow .15s" };
 
@@ -268,10 +301,10 @@ const Tarea = ({ label, icon, ...p }) => (
   </div>
 );
 
-const Toggle = ({ options, value, onChange, accent, labelFor }) => (
+const Toggle = ({ options, value, onChange, accent, labels }) => (
   <div style={{ display:"flex", gap:8, marginBottom:14 }}>
     {options.map(o=>(
-      <button key={o} onClick={()=>onChange(o)} style={{ flex:1, padding:"11px", borderRadius:9, fontWeight:700, fontSize:"0.85rem", cursor:"pointer", textTransform:"uppercase", letterSpacing:"0.04em", transition:"all .15s", background:value===o?(accent||C.blue):C.surface2, color:value===o?"#fff":C.text2, border:`1.5px solid ${value===o?(accent||C.blue):C.border}`, boxShadow:value===o?`0 4px 12px ${(accent||C.blue)}33`:"none" }}>{labelFor?labelFor(o):o}</button>
+      <button key={o} onClick={()=>onChange(o)} style={{ flex:1, padding:"11px", borderRadius:9, fontWeight:700, fontSize:"0.85rem", cursor:"pointer", textTransform:"uppercase", letterSpacing:"0.04em", transition:"all .15s", background:value===o?(accent||C.blue):C.surface2, color:value===o?"#fff":C.text2, border:`1.5px solid ${value===o?(accent||C.blue):C.border}`, boxShadow:value===o?`0 4px 12px ${(accent||C.blue)}33`:"none" }}>{labels?(labels[o]||o):o}</button>
     ))}
   </div>
 );
@@ -301,31 +334,27 @@ const SectionHead = ({ icon, children }) => (
   </div>
 );
 
-// ─── Language toggle (compact pill in the nav) ────────────────
-const LangToggle = () => {
-  const { lang, setLang } = useLang();
-  const m = useMobile();
-  const next = lang === "en" ? "es" : "en";
-  return (
-    <button onClick={()=>setLang(next)} aria-label="Switch language"
-      style={{ display:"inline-flex", alignItems:"center", justifyContent:"center", gap:5, height:m?34:36, padding:"0 12px", borderRadius:9, border:`1.5px solid ${C.border}`, background:"#fff", color:C.text2, cursor:"pointer", fontWeight:800, fontSize:"0.72rem", letterSpacing:"0.04em", transition:"transform .15s", flexShrink:0 }}
-      onMouseOver={e=>{e.currentTarget.style.transform="translateY(-1px)";}} onMouseOut={e=>{e.currentTarget.style.transform="translateY(0)";}}>
-      <Ico d={P.globe} size={14} color={C.blue}/>{lang === "en" ? "ES" : "EN"}
-    </button>
-  );
-};
-
-// ─── Google Maps embed ────────────────────────────────────────
 const MapEmbed = ({ location }) => {
   const m = useMobile();
-  const { t } = useLang();
   if (!location || location.trim().length < 3) return null;
   return (
     <div style={{ borderRadius:10, overflow:"hidden", border:`1px solid ${C.border}`, marginTop:10 }}>
       <div style={{ background:C.surface2, padding:"7px 12px", display:"flex", alignItems:"center", gap:7 }}>
-        <Ico d={P.map} size={13} color={C.blue}/><span style={{ fontSize:"0.72rem", color:C.text2, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.07em" }}>{t("map_label")}</span>
+        <Ico d={P.map} size={13} color={C.blue}/><span style={{ fontSize:"0.72rem", color:C.text2, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.07em" }}>Location Map</span>
       </div>
       <iframe src={`https://www.google.com/maps?q=${encodeURIComponent(location)}&output=embed`} width="100%" height={m?170:210} style={{ border:"none", display:"block" }} loading="lazy" referrerPolicy="no-referrer-when-downgrade" title="map"/>
+    </div>
+  );
+};
+
+// ─── Language toggle (EN / ES) ────────────────────────────────
+const LangToggle = ({ m }) => {
+  const { lang, setLang } = useLang();
+  return (
+    <div style={{ display:"flex", border:`1.5px solid ${C.border}`, borderRadius:9, overflow:"hidden", background:"#fff", flexShrink:0 }}>
+      {["en","es"].map(l=>(
+        <button key={l} onClick={()=>setLang(l)} aria-label={l==="en"?"English":"Español"} style={{ padding:m?"6px 9px":"7px 11px", border:"none", cursor:"pointer", background:lang===l?C.blue:"transparent", color:lang===l?"#fff":C.text2, fontWeight:800, fontSize:"0.7rem", letterSpacing:"0.04em", textTransform:"uppercase" }}>{l}</button>
+      ))}
     </div>
   );
 };
@@ -342,41 +371,42 @@ const Nav = ({ bizName, isMech, onMechClick }) => {
         </div>
         <div style={{ minWidth:0 }}>
           <span style={{ color:C.text, fontWeight:900, fontSize:m?"1.05rem":"1.18rem", letterSpacing:"0.06em" }}>{bizName}</span>
-          {!m && <span style={{ color:C.text3, fontSize:"0.64rem", marginLeft:8, textTransform:"uppercase", letterSpacing:"0.1em", fontWeight:600 }}>{t("nav_tagline")}</span>}
+          {!m && <span style={{ color:C.text3, fontSize:"0.64rem", marginLeft:8, textTransform:"uppercase", letterSpacing:"0.1em", fontWeight:600 }}>{t("tagline")}</span>}
         </div>
       </div>
-      <div style={{ display:"flex", alignItems:"center", gap:m?7:9, flexShrink:0 }}>
-        <LangToggle/>
+      <div style={{ display:"flex", alignItems:"center", gap:m?8:10 }}>
+        {!isMech && <LangToggle m={m}/>}
         <a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" aria-label="Instagram"
            style={{ display:"inline-flex", alignItems:"center", justifyContent:"center", width:m?34:36, height:m?34:36, borderRadius:9, border:`1.5px solid ${C.border}`, background:"#fff", cursor:"pointer", transition:"transform .15s", flexShrink:0 }}
            onMouseOver={e=>{e.currentTarget.style.transform="translateY(-1px)";}}
            onMouseOut={e=>{e.currentTarget.style.transform="translateY(0)";}}>
           <Ico d={P.instagram} size={m?18:19} color="#E4405F"/>
         </a>
-        {!isMech&&<Btn small outline onClick={onMechClick} icon="lock">{t("nav_login")}</Btn>}
+        {!isMech&&<Btn small outline onClick={onMechClick} icon="lock">{t("login")}</Btn>}
       </div>
     </div>
   );
 };
 
-// ─── Hero Banner ──────────────────────────────────────────────
+// ─── Hero ─────────────────────────────────────────────────────
 const Hero = () => {
   const m = useMobile();
   const { t } = useLang();
+  const chips = [["zap",t("fastResponse"),"#fbbf24"],["globe",t("bilingual"),"#67e8f9"],["heart",t("friendlyService"),"#fda4af"]];
   return (
     <div style={{ padding:m?"30px 16px 18px":"54px 20px 30px", textAlign:"center", position:"relative" }}>
       <div style={{ ...heroPill, marginBottom:16 }}>
         <Ico d={P.shield} size={14} color="#ffffff"/>
-        <span style={{ color:"#ffffff", fontSize:"0.72rem", fontWeight:700, letterSpacing:"0.06em", textTransform:"uppercase" }}>{t("hero_badge")}</span>
+        <span style={{ color:"#ffffff", fontSize:"0.72rem", fontWeight:700, letterSpacing:"0.06em", textTransform:"uppercase" }}>{t("trustedLocal")}</span>
       </div>
-      <div style={{ color:"#ffffff", fontWeight:900, fontSize:m?"1.95rem":"2.7rem", letterSpacing:"-0.01em", lineHeight:1.1, marginBottom:10, textShadow:"0 2px 22px rgba(0,0,0,0.28)" }}>{t("hero_title")}</div>
+      <div style={{ color:"#ffffff", fontWeight:900, fontSize:m?"1.95rem":"2.7rem", letterSpacing:"-0.01em", lineHeight:1.1, marginBottom:10, textShadow:"0 2px 22px rgba(0,0,0,0.28)" }}>{t("helpOnWay")}</div>
       <div style={{ color:"rgba(255,255,255,0.9)", fontSize:m?"0.92rem":"1.05rem", fontWeight:500, maxWidth:440, margin:"0 auto", lineHeight:1.5, textShadow:"0 1px 12px rgba(0,0,0,0.22)" }}>
-        {t("hero_desc")}
+        {t("heroDesc")}
       </div>
       <div style={{ display:"flex", justifyContent:"center", flexWrap:"wrap", gap:m?"8px 10px":14, alignItems:"center", marginTop:18 }}>
-        {[["zap","feat_fast","#fbbf24"],["globe","feat_bilingual","#67e8f9"],["heart","feat_friendly","#fda4af"]].map(([ic,key,col])=>(
-          <div key={key} style={{ ...heroPill, color:"rgba(255,255,255,0.92)", fontSize:m?"0.74rem":"0.82rem", fontWeight:600 }}>
-            <Ico d={P[ic]} size={14} color={col}/>{t(key)}
+        {chips.map(([ic,lbl,col])=>(
+          <div key={lbl} style={{ ...heroPill, color:"rgba(255,255,255,0.92)", fontSize:m?"0.74rem":"0.82rem", fontWeight:600 }}>
+            <Ico d={P[ic]} size={14} color={col}/>{lbl}
           </div>
         ))}
       </div>
@@ -388,7 +418,9 @@ const Hero = () => {
 const CustomerForm = ({ onSubmit, availability, busy, onTrack }) => {
   const m = useMobile();
   const { t } = useLang();
-  const [f,setF] = useState({ name:"",phone:"",loc:"",svc:"Towing",year:"",make:"",model:"",issue:"",urg:"ASAP",schedTime:"" });
+  const saved = useRef(getSavedCustomer()).current;
+  const [f,setF] = useState({ name:saved.name||"", phone:saved.phone||"", loc:"", svc:"Towing", year:saved.year||"", make:saved.make||"", model:saved.model||"", issue:"", urg:"ASAP", schedTime:"", company:"" });
+  const [prefilled,setPrefilled] = useState(!!(saved.name || saved.phone));
   const [warn,setWarn] = useState(false);
   const [err,setErr] = useState("");
   const [mapLoc,setMapLoc] = useState("");
@@ -406,79 +438,94 @@ const CustomerForm = ({ onSubmit, availability, busy, onTrack }) => {
     setWarn(cur<oh*60+om||cur>ch*60+cm);
   },[availability]);
 
+  const clearPrefill = () => { setF(p=>({...p,name:"",phone:"",year:"",make:"",model:""})); clearSavedCustomer(); setPrefilled(false); };
+
   const submit = async () => {
-    for(const k of ["name","phone","loc","year","make","model","issue"]) if(!f[k].trim()){setErr(t("err_required"));return;}
-    if(f.urg==="Scheduled"&&!f.schedTime){setErr(t("err_sched"));return;}
+    for(const k of ["name","phone","loc","year","make","model","issue"]) if(!f[k].trim()){setErr(t("fillRequired"));return;}
+    if(f.urg==="Scheduled"&&!f.schedTime){setErr(t("pickTime"));return;}
     setErr(""); setSubmitting(true);
-    try { await onSubmit({...f}); }
-    catch (e) { setErr(e.message || t("err_submit")); }
+    try { await onSubmit({...f}); saveCustomer({ name:f.name, phone:f.phone, year:f.year, make:f.make, model:f.model }); }
+    catch (e) { setErr(e.message || t("submitError")); }
     finally { setSubmitting(false); }
   };
+
+  const headTitle = busy ? t("requestCallback") : t("requestService");
+  const btnLabel  = submitting ? t("submitting") : (busy ? t("requestCallback") : t("submitRequest"));
 
   return (
     <div>
       <Hero/>
       <div style={{ padding:m?"0 12px 24px":"0 16px 24px", maxWidth:600, margin:"0 auto" }}>
         <div style={{ textAlign:"center", marginBottom:16 }}>
-          <button onClick={onTrack} style={{ background:"rgba(255,255,255,0.16)", border:"1px solid rgba(255,255,255,0.35)", backdropFilter:"blur(6px)", WebkitBackdropFilter:"blur(6px)", color:"#fff", borderRadius:30, padding:"8px 18px", fontSize:"0.8rem", fontWeight:700, cursor:"pointer", display:"inline-flex", alignItems:"center", gap:7, transition:"transform .15s" }}
-            onMouseOver={e=>{e.currentTarget.style.transform="translateY(-1px)";}} onMouseOut={e=>{e.currentTarget.style.transform="translateY(0)";}}>
-            <Ico d={P.search} size={14} color="#7dd3fc"/>{t("track_cta")}
+          <button onClick={onTrack} style={{ ...heroPill, color:"#fff", fontSize:"0.8rem", fontWeight:600, cursor:"pointer", padding:"8px 16px" }}>
+            <Ico d={P.list} size={14} color="#fff"/>{t("trackExisting")}
           </button>
         </div>
 
         {busy ? (
-          <div style={{ background:"rgba(254,242,242,0.97)", borderRadius:12, padding:"12px 15px", marginBottom:16, color:"#b91c1c", fontSize:"0.85rem", display:"flex", gap:9, alignItems:"flex-start", border:`1px solid ${C.red}55`, boxShadow:"0 8px 24px rgba(8,28,52,0.18)", fontWeight:600 }}>
-            <Ico d={P.alert} size={16} color={C.red} style={{marginTop:1,flexShrink:0}}/>{t("busy_banner")}
+          <div style={{ background:"rgba(255,251,235,0.96)", borderRadius:12, padding:"12px 14px", marginBottom:16, color:C.amberD, fontSize:"0.85rem", display:"flex", gap:8, alignItems:"flex-start", border:`1px solid ${C.amber}66`, boxShadow:"0 8px 24px rgba(8,28,52,0.18)", fontWeight:600 }}>
+            <Ico d={P.clock} size={16} color={C.amber} style={{marginTop:1,flexShrink:0}}/>{t("busyBanner")}
           </div>
-        ) : warn ? (
+        ) : warn && (
           <div style={{ background:"rgba(255,251,235,0.96)", borderRadius:12, padding:"11px 14px", marginBottom:16, color:C.amberD, fontSize:"0.82rem", display:"flex", gap:8, alignItems:"flex-start", border:`1px solid ${C.amber}55`, boxShadow:"0 8px 24px rgba(8,28,52,0.18)" }}>
-            <Ico d={P.clock} size={15} color={C.amber} style={{marginTop:1,flexShrink:0}}/>{t("afterhours")}
+            <Ico d={P.clock} size={15} color={C.amber} style={{marginTop:1,flexShrink:0}}/>{t("afterHours")}
           </div>
-        ) : null}
+        )}
 
         <Card style={{ marginBottom:20 }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:11, marginBottom:18 }}>
             <div style={{ background:`linear-gradient(135deg, ${C.blue}, ${C.sky})`, borderRadius:11, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, boxShadow:`0 4px 12px ${C.blue}33` }}><Ico d={P.zap} size={20} color="#fff"/></div>
             <div style={{ textAlign:"left" }}>
-              <div style={{ color:C.text, fontWeight:800, fontSize:"1.15rem" }}>{t("form_title")}</div>
-              <div style={{ color:C.text2, fontSize:"0.82rem" }}>{t("form_subtitle")}</div>
+              <div style={{ color:C.text, fontWeight:800, fontSize:"1.15rem" }}>{headTitle}</div>
+              <div style={{ color:C.text2, fontSize:"0.82rem" }}>{t("formSubtitle")}</div>
             </div>
           </div>
-          <Inp label={t("f_name")} icon="user" placeholder={t("f_name_ph")} value={f.name} onChange={e=>set("name",e.target.value)}/>
-          <Inp label={t("f_phone")} icon="phone" type="tel" placeholder={t("f_phone_ph")} value={f.phone} onChange={e=>set("phone",e.target.value)}/>
+
+          {prefilled && (
+            <div style={{ background:`${C.blue}0d`, border:`1px solid ${C.blue}20`, color:C.text2, borderRadius:9, padding:"9px 12px", marginBottom:14, fontSize:"0.78rem", display:"flex", gap:8, alignItems:"center", justifyContent:"space-between" }}>
+              <span style={{ display:"flex", gap:7, alignItems:"center" }}><Ico d={P.user} size={13} color={C.blue}/>{t("prefillNote")}</span>
+              <span onClick={clearPrefill} style={{ color:C.blue, fontWeight:700, cursor:"pointer", textTransform:"uppercase", fontSize:"0.7rem", flexShrink:0 }}>{t("clear")}</span>
+            </div>
+          )}
+
+          {/* Honeypot — hidden from real users; bots that fill it are rejected by the server */}
+          <input type="text" name="company" tabIndex={-1} autoComplete="off" aria-hidden="true" value={f.company} onChange={e=>set("company",e.target.value)} style={{ position:"absolute", left:"-9999px", width:1, height:1, opacity:0 }}/>
+
+          <Inp label={t("yourName")} icon="user" placeholder={t("fullName")} value={f.name} onChange={e=>set("name",e.target.value)}/>
+          <Inp label={t("phoneNumber")} icon="phone" type="tel" placeholder="(555) 000-0000" value={f.phone} onChange={e=>set("phone",e.target.value)}/>
           <div style={{ marginBottom:14 }}>
-            <Lbl icon="loc">{t("f_loc")}</Lbl>
-            <input placeholder={t("f_loc_ph")} value={f.loc} onChange={e=>set("loc",e.target.value)} onBlur={e=>setMapLoc(e.target.value)} style={fieldStyle}/>
+            <Lbl icon="loc">{t("yourLocation")}</Lbl>
+            <input placeholder={t("addressPlaceholder")} value={f.loc} onChange={e=>set("loc",e.target.value)} onBlur={e=>setMapLoc(e.target.value)} style={fieldStyle}/>
             <MapEmbed location={mapLoc}/>
           </div>
-          <Lbl icon={f.svc==="Towing"?"tow":"wrench"}>{t("f_svc")}</Lbl>
-          <Toggle options={["Towing","Mechanical"]} value={f.svc} onChange={v=>{ set("svc",v); if(v==="Mechanical") set("urg","Scheduled"); }} labelFor={o=>o==="Towing"?t("svc_towing"):t("svc_mechanical")}/>
-          <Lbl icon="car">{t("f_vehicle")}</Lbl>
+          <Lbl icon={f.svc==="Towing"?"tow":"wrench"}>{t("serviceType")}</Lbl>
+          <Toggle options={["Towing","Mechanical"]} labels={{Towing:t("towing"),Mechanical:t("mechanical")}} value={f.svc} onChange={v=>{ set("svc",v); if(v==="Mechanical") set("urg","Scheduled"); }}/>
+          <Lbl icon="car">{t("vehicleInfo")}</Lbl>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1.4fr 1.4fr", gap:m?6:8, marginBottom:14 }}>
-            {[["year",t("f_year")],["make",t("f_make")],["model",t("f_model")]].map(([k,l])=>(
+            {[["year",t("year")],["make",t("make")],["model",t("model")]].map(([k,l])=>(
               <input key={k} placeholder={l} value={f[k]} onChange={e=>set(k,e.target.value)} style={{ ...fieldStyle, padding:m?"11px 8px":"11px 12px", fontSize:"0.85rem" }}/>
             ))}
           </div>
-          <Tarea label={t("f_issue")} icon="alert" placeholder={t("f_issue_ph")} value={f.issue} onChange={e=>set("issue",e.target.value)}/>
+          <Tarea label={t("describeIssue")} icon="alert" placeholder={t("issuePlaceholder")} value={f.issue} onChange={e=>set("issue",e.target.value)}/>
           {f.svc==="Mechanical" ? (
             <>
-              <Lbl icon="cal">{t("f_appt")}</Lbl>
+              <Lbl icon="cal">{t("appointment")}</Lbl>
               <div style={{ background:`${C.blue}0d`, border:`1px solid ${C.blue}20`, color:C.text2, borderRadius:9, padding:"10px 12px", marginBottom:12, fontSize:"0.8rem", display:"flex", gap:8, alignItems:"flex-start" }}>
-                <Ico d={P.clock} size={14} color={C.blue} style={{marginTop:1,flexShrink:0}}/>{t("appt_notice")}
+                <Ico d={P.clock} size={14} color={C.blue} style={{marginTop:1,flexShrink:0}}/>{t("apptNote")}
               </div>
-              <Inp label={t("f_pref_time")} icon="cal" type="datetime-local" value={f.schedTime} onChange={e=>set("schedTime",e.target.value)}/>
+              <Inp label={t("preferredTime")} icon="cal" type="datetime-local" value={f.schedTime} onChange={e=>set("schedTime",e.target.value)}/>
             </>
           ) : (
             <>
-              <Lbl icon="clock">{t("f_urgency")}</Lbl>
-              <Toggle options={["ASAP","Scheduled"]} value={f.urg} onChange={v=>set("urg",v)} accent={C.amber} labelFor={o=>o==="ASAP"?t("urg_asap"):t("urg_scheduled")}/>
-              {f.urg==="Scheduled"&&<Inp label={t("f_sched_time")} icon="cal" type="datetime-local" value={f.schedTime} onChange={e=>set("schedTime",e.target.value)}/>}
+              <Lbl icon="clock">{t("urgency")}</Lbl>
+              <Toggle options={["ASAP","Scheduled"]} labels={{ASAP:t("asap"),Scheduled:t("scheduled")}} value={f.urg} onChange={v=>set("urg",v)} accent={C.amber}/>
+              {f.urg==="Scheduled"&&<Inp label={t("scheduledTime")} icon="cal" type="datetime-local" value={f.schedTime} onChange={e=>set("schedTime",e.target.value)}/>}
             </>
           )}
           <ErrorBar msg={err} onClose={()=>setErr("")}/>
-          <Btn full onClick={submit} icon="zap" disabled={submitting}>{submitting?t("submitting"):(busy?t("submit_busy"):t("submit"))}</Btn>
+          <Btn full onClick={submit} icon="zap" disabled={submitting}>{btnLabel}</Btn>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginTop:12, color:C.text3, fontSize:"0.74rem" }}>
-            <Ico d={P.shield} size={12} color={C.text3}/>{t("privacy")}
+            <Ico d={P.shield} size={12} color={C.text3}/>{t("infoNote")}
           </div>
         </Card>
       </div>
@@ -486,102 +533,195 @@ const CustomerForm = ({ onSubmit, availability, busy, onTrack }) => {
   );
 };
 
-// ─── Confirmation / Tracking (polls backend for live status) ──
-const STEPS = ["pending","accepted","onway","done"];
+// ─── Shared tracking pieces ───────────────────────────────────
+const StatusTracker = ({ req }) => {
+  const m = useMobile();
+  const { t } = useLang();
+  const SLBLS = [t("stepSubmitted"),t("stepAccepted"),t("stepOnway"),t("stepComplete")];
+  const st = req.statusTimes || {};
+  const idx = (req.status==="dismissed"||req.status==="cancelled") ? 0 : STEPS.indexOf(req.status);
+  return (
+    <Card style={{ marginBottom:20 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", position:"relative", padding:"10px 0" }}>
+        <div style={{ position:"absolute", top:28, left:"12%", right:"12%", height:3, background:C.surface3, borderRadius:3 }}/>
+        <div style={{ position:"absolute", top:28, left:"12%", width:`${Math.max(0,idx/3*76)}%`, height:3, background:`linear-gradient(to right, ${C.blue}, ${C.sky})`, transition:"width .6s", borderRadius:3 }}/>
+        {SLBLS.map((l,i)=>{
+          const ts = st[STEPS[i]];
+          return (
+            <div key={l} style={{ display:"flex", flexDirection:"column", alignItems:"center", zIndex:2, flex:1 }}>
+              <div style={{ width:34, height:34, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", background:i<=idx?C.blue:C.surface, border:`2px solid ${i<=idx?C.blue:C.surface3}`, color:i<=idx?"#fff":C.text3, marginBottom:8, boxShadow:i<=idx?`0 4px 12px ${C.blue}40`:"none", transition:"all .3s" }}>{i<idx?<Ico d={P.check} size={15} color="#fff"/>:<span style={{ fontWeight:800, fontSize:"0.78rem" }}>{i+1}</span>}</div>
+              <div style={{ color:i<=idx?C.text:C.text3, fontSize:m?"0.58rem":"0.63rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.04em", textAlign:"center", lineHeight:1.2 }}>{l}</div>
+              {ts && i<=idx && <div style={{ color:C.text3, fontSize:"0.55rem", marginTop:3, fontWeight:600 }}>{fmtTime(ts)}</div>}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+};
 
-const Confirmation = ({ initialReq, onNew, title, subtitle, note }) => {
+const EtaBanner = ({ req }) => {
+  const { t } = useLang();
+  if (req.status!=="onway" || !req.eta) return null;
+  return (
+    <div style={{ ...card(), borderRadius:14, padding:"14px 16px", marginBottom:12, borderLeft:`4px solid ${C.sky}`, display:"flex", alignItems:"center", gap:11 }}>
+      <div style={{ background:`${C.sky}18`, borderRadius:10, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><Ico d={P.tow} size={18} color={C.sky}/></div>
+      <div><div style={{ color:C.text3, fontSize:"0.65rem", textTransform:"uppercase", letterSpacing:"0.07em", fontWeight:700 }}>{t("etaArrival")}</div><div style={{ color:C.text, fontWeight:800, fontSize:"1.05rem" }}>{req.eta}</div></div>
+    </div>
+  );
+};
+
+const JobDetails = ({ req }) => {
+  const { t } = useLang();
+  const svcLabel = req.svc==="Towing" ? t("towing") : t("mechanical");
+  const urgLabel = req.urg==="Scheduled" ? t("scheduled") : t("asap");
+  return (
+    <Card>
+      <Lbl icon="car">{t("jobDetails")}</Lbl>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:10 }}>
+        {[[t("name"),req.name,"user"],[t("phone"),req.phone,"phone"],[t("service"),svcLabel,req.svc==="Towing"?"tow":"wrench"],[t("urgency"),urgLabel,"clock"],[t("vehicle"),`${req.year} ${req.make} ${req.model}`,"car"],[t("location"),req.loc,"loc"]].map(([k,v,ic])=>(
+          <div key={k}><div style={{ color:C.text3, fontSize:"0.65rem", textTransform:"uppercase", display:"flex", alignItems:"center", gap:4, marginBottom:2, fontWeight:600 }}><Ico d={P[ic]} size={10} color={C.text3}/>{k}</div><div style={{ color:k===t("vehicle")?C.blue:C.text, fontSize:"0.88rem", fontWeight:k===t("vehicle")?700:500, wordBreak:"break-word" }}>{v}</div></div>
+        ))}
+      </div>
+      {req.issue&&<div style={{ marginTop:12, padding:"11px 13px", background:C.surface2, borderRadius:10 }}><div style={{ color:C.text3, fontSize:"0.65rem", textTransform:"uppercase", marginBottom:4, fontWeight:600 }}>{t("issue")}</div><div style={{ color:C.text2, fontSize:"0.86rem", fontStyle:"italic" }}>"{req.issue}"</div></div>}
+      <MapEmbed location={req.loc}/>
+    </Card>
+  );
+};
+
+const CancelledNotice = () => {
+  const { t } = useLang();
+  return (
+    <Card style={{ marginBottom:20, borderLeft:"4px solid #94a3b8" }}>
+      <div style={{ textAlign:"center", padding:"6px 0" }}>
+        <div style={{ color:C.text, fontWeight:800, fontSize:"1.05rem", marginBottom:6 }}>{t("requestCancelledTitle")}</div>
+        <div style={{ color:C.text2, fontSize:"0.85rem", lineHeight:1.5 }}>{t("requestCancelledBody")}</div>
+      </div>
+    </Card>
+  );
+};
+
+const CancelControls = ({ req, phone, onCancelled }) => {
+  const { t } = useLang();
+  const [confirming,setConfirming]=useState(false);
+  const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState("");
+  const doCancel = async () => {
+    setBusy(true); setErr("");
+    try { const updated = await api("/api/requests/"+req.id+"/cancel", { method:"POST", body:{ phone } }); onCancelled(updated); }
+    catch (e) { setErr(e.message || t("cancelError")); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div style={{ marginTop:8 }}>
+      <ErrorBar msg={err} onClose={()=>setErr("")}/>
+      {!confirming ? (
+        <button onClick={()=>setConfirming(true)} style={{ width:"100%", background:"rgba(255,255,255,0.9)", border:`1.5px solid ${C.red}55`, color:C.red, borderRadius:9, padding:"11px", fontWeight:700, fontSize:"0.78rem", cursor:"pointer", textTransform:"uppercase", letterSpacing:"0.04em" }}>{t("cancelRequest")}</button>
+      ) : (
+        <div style={{ ...card(), borderRadius:12, padding:"14px", border:`1px solid ${C.red}40` }}>
+          <div style={{ color:C.text, fontSize:"0.85rem", marginBottom:12, fontWeight:600 }}>{t("cancelConfirm")}</div>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+            <Btn small color={C.red} onClick={doCancel} disabled={busy}>{busy?t("cancelling"):t("cancelYes")}</Btn>
+            <Btn small outline color={C.text2} onClick={()=>setConfirming(false)} disabled={busy}>{t("cancelKeep")}</Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const TrackingBody = ({ req, phone, onUpdate }) => (
+  <>
+    {req.status==="cancelled" ? <CancelledNotice/> : <><EtaBanner req={req}/><StatusTracker req={req}/></>}
+    <JobDetails req={req}/>
+    {["pending","accepted","onway"].includes(req.status) && <CancelControls req={req} phone={phone} onCancelled={onUpdate}/>}
+  </>
+);
+
+// ─── Confirmation (polls backend for live status) ─────────────
+const Confirmation = ({ initialReq, onNew, callback }) => {
   const m = useMobile();
   const { t } = useLang();
   const [req,setReq] = useState(initialReq);
 
   useEffect(()=>{
     let alive = true;
-    const tick = async () => {
-      try { const fresh = await api("/api/requests/"+initialReq.id); if(alive) setReq(fresh); } catch {}
-    };
+    const tick = async () => { try { const fresh = await api("/api/requests/"+initialReq.id); if(alive) setReq(fresh); } catch {} };
     const iv = setInterval(tick, 4000);
     return () => { alive = false; clearInterval(iv); };
   },[initialReq.id]);
 
-  const idx = req.status==="dismissed"?0:STEPS.indexOf(req.status);
-  const SLBLS = [t("step_submitted"),t("step_accepted"),t("step_onway"),t("step_done")];
-  const svcLabel = req.svc==="Towing"?t("svc_towing"):t("svc_mechanical");
-  const urgLabel = req.urg==="ASAP"?t("urg_asap"):t("urg_scheduled");
   return (
     <div style={{ padding:m?"22px 12px":"28px 16px", maxWidth:600, margin:"0 auto" }}>
       <div style={{ textAlign:"center", marginBottom:24 }}>
         <div style={{ width:66, height:66, background:`linear-gradient(135deg, ${C.blue}, ${C.sky})`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 14px", boxShadow:"0 10px 30px rgba(0,0,0,0.3)" }}><Ico d={P.check} size={32} color="#fff"/></div>
-        <div style={{ color:ON.t, fontWeight:900, fontSize:"1.4rem", textShadow:"0 2px 16px rgba(0,0,0,0.28)" }}>{title||t("conf_title")}</div>
-        <div style={{ color:ON.t2, fontSize:"0.88rem", marginTop:6 }}>{subtitle||t("conf_subtitle")}</div>
-        {note && <div style={{ color:ON.t3, fontSize:"0.78rem", marginTop:6 }}>{note}</div>}
+        <div style={{ color:ON.t, fontWeight:900, fontSize:"1.4rem", textShadow:"0 2px 16px rgba(0,0,0,0.28)" }}>{callback?t("callbackReceived"):t("requestSubmitted")}</div>
+        <div style={{ color:ON.t2, fontSize:"0.88rem", marginTop:6 }}>{t("confirmThanks")}</div>
       </div>
-      <Card style={{ marginBottom:20 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", position:"relative", padding:"10px 0" }}>
-          <div style={{ position:"absolute", top:28, left:"12%", right:"12%", height:3, background:C.surface3, borderRadius:3 }}/>
-          <div style={{ position:"absolute", top:28, left:"12%", width:`${Math.max(0,idx/3*76)}%`, height:3, background:`linear-gradient(to right, ${C.blue}, ${C.sky})`, transition:"width .6s", borderRadius:3 }}/>
-          {SLBLS.map((l,i)=>(
-            <div key={l} style={{ display:"flex", flexDirection:"column", alignItems:"center", zIndex:2, flex:1 }}>
-              <div style={{ width:34, height:34, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", background:i<=idx?C.blue:C.surface, border:`2px solid ${i<=idx?C.blue:C.surface3}`, color:i<=idx?"#fff":C.text3, marginBottom:8, boxShadow:i<=idx?`0 4px 12px ${C.blue}40`:"none", transition:"all .3s" }}>{i<idx?<Ico d={P.check} size={15} color="#fff"/>:<span style={{ fontWeight:800, fontSize:"0.78rem" }}>{i+1}</span>}</div>
-              <div style={{ color:i<=idx?C.text:C.text3, fontSize:m?"0.58rem":"0.63rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.04em", textAlign:"center", lineHeight:1.2 }}>{l}</div>
-            </div>
-          ))}
-        </div>
-      </Card>
-      <Card>
-        <Lbl icon="car">{t("job_details")}</Lbl>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:10 }}>
-          {[[t("d_name"),req.name,"user"],[t("d_phone"),req.phone,"phone"],[t("d_service"),svcLabel,req.svc==="Towing"?"tow":"wrench"],[t("d_urgency"),urgLabel,"clock"],[t("d_vehicle"),`${req.year} ${req.make} ${req.model}`,"car"],[t("d_location"),req.loc,"loc"]].map(([k,v,ic])=>(
-            <div key={k}><div style={{ color:C.text3, fontSize:"0.65rem", textTransform:"uppercase", display:"flex", alignItems:"center", gap:4, marginBottom:2, fontWeight:600 }}><Ico d={P[ic]} size={10} color={C.text3}/>{k}</div><div style={{ color:k===t("d_vehicle")?C.blue:C.text, fontSize:"0.88rem", fontWeight:k===t("d_vehicle")?700:500, wordBreak:"break-word" }}>{v}</div></div>
-          ))}
-        </div>
-        {req.issue&&<div style={{ marginTop:12, padding:"11px 13px", background:C.surface2, borderRadius:10 }}><div style={{ color:C.text3, fontSize:"0.65rem", textTransform:"uppercase", marginBottom:4, fontWeight:600 }}>{t("d_issue")}</div><div style={{ color:C.text2, fontSize:"0.86rem", fontStyle:"italic" }}>"{req.issue}"</div></div>}
-        <MapEmbed location={req.loc}/>
-      </Card>
-      <Btn full outline onClick={onNew} icon="zap" style={{ marginTop:8 }}>{t("submit_another")}</Btn>
+      <TrackingBody req={req} phone={req.phone} onUpdate={setReq}/>
+      <Btn full outline onClick={onNew} icon="zap" style={{ marginTop:8 }}>{t("submitAnother")}</Btn>
     </div>
   );
 };
 
-// ─── Lookup (track by phone) ──────────────────────────────────
-const Lookup = ({ onBack, onNew }) => {
+// ─── Track-by-phone Lookup ────────────────────────────────────
+const Lookup = ({ onBack }) => {
   const m = useMobile();
   const { t } = useLang();
   const [phone,setPhone] = useState("");
-  const [found,setFound] = useState(null);
-  const [count,setCount] = useState(0);
+  const [results,setResults] = useState(null);
   const [err,setErr] = useState("");
   const [busy,setBusy] = useState(false);
-  const [searched,setSearched] = useState(false);
+  const [live,setLive] = useState(null);
 
-  const go = async () => {
-    if(!phone.trim()) return;
+  const latest = results && results.length ? results[0] : null;
+
+  useEffect(()=>{
+    if(!latest){ setLive(null); return; }
+    setLive(latest);
+    let alive = true;
+    const tick = async () => { try { const fresh = await api("/api/requests/"+latest.id); if(alive) setLive(fresh); } catch {} };
+    const iv = setInterval(tick, 5000);
+    return () => { alive = false; clearInterval(iv); };
+  },[latest && latest.id]);
+
+  const search = async () => {
+    if(phone.replace(/\D/g,"").length < 7){ setErr(t("enterValidPhone")); return; }
     setBusy(true); setErr("");
-    try {
-      const list = await api("/api/requests/lookup?phone="+encodeURIComponent(phone.trim()));
-      setCount(list.length); setFound(list[0]||null); setSearched(true);
-    } catch (e) { setErr(e.message || t("err_submit")); setSearched(true); }
+    try { const list = await api("/api/requests/lookup?phone="+encodeURIComponent(phone)); setResults(list); }
+    catch (e) { setErr(e.message || t("cancelError")); }
     finally { setBusy(false); }
   };
 
-  if (found) return <Confirmation initialReq={found} onNew={onNew} title={t("lookup_track_title")} subtitle={t("lookup_track_subtitle")} note={count>1?t("lookup_multiple"):""}/>;
+  const shown = live || latest;
+
+  if (shown) {
+    return (
+      <div style={{ padding:m?"22px 12px":"28px 16px", maxWidth:600, margin:"0 auto" }}>
+        <div style={{ textAlign:"center", marginBottom:20 }}>
+          <div style={{ color:ON.t, fontWeight:900, fontSize:"1.3rem", textShadow:"0 2px 16px rgba(0,0,0,0.28)" }}>{shown.name}</div>
+          {results.length>1 && <div style={{ color:ON.t2, fontSize:"0.82rem", marginTop:6 }}>{t("showingRecent")}</div>}
+        </div>
+        <TrackingBody req={shown} phone={shown.phone} onUpdate={setLive}/>
+        <Btn full outline onClick={()=>{ setResults(null); setLive(null); setPhone(""); }} icon="search" style={{ marginTop:8 }}>{t("searchAgain")}</Btn>
+        <Btn full outline onClick={onBack} style={{ marginTop:8 }}>{t("back")}</Btn>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ padding:m?"24px 16px":32, maxWidth:420, margin:m?"24px auto":"48px auto" }}>
+    <div style={{ padding:m?"24px 12px":"32px 16px", maxWidth:460, margin:m?"10px auto":"28px auto" }}>
       <Card>
         <div style={{ textAlign:"center", marginBottom:20 }}>
           <div style={{ width:58, height:58, background:`linear-gradient(135deg, ${C.blue}, ${C.sky})`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 12px", boxShadow:`0 6px 18px ${C.blue}40` }}><Ico d={P.search} size={24} color="#fff"/></div>
-          <div style={{ color:C.text, fontWeight:800, fontSize:"1.15rem" }}>{t("lookup_title")}</div>
-          <div style={{ color:C.text2, fontSize:"0.8rem", marginTop:4 }}>{t("lookup_subtitle")}</div>
+          <div style={{ color:C.text, fontWeight:800, fontSize:"1.15rem" }}>{t("trackTitle")}</div>
+          <div style={{ color:C.text2, fontSize:"0.82rem", marginTop:6, lineHeight:1.4 }}>{t("trackSubtitle")}</div>
         </div>
-        <Inp label={t("lookup_phone")} icon="phone" type="tel" placeholder={t("f_phone_ph")} value={phone} onChange={e=>{setPhone(e.target.value);setErr("");setSearched(false);}} onKeyDown={e=>e.key==="Enter"&&go()}/>
-        {searched && !found && !err && (
-          <div style={{ background:`${C.amber}14`, border:`1px solid ${C.amber}40`, color:C.amberD, borderRadius:9, padding:"10px 12px", marginBottom:12, fontSize:"0.82rem", display:"flex", gap:8, alignItems:"flex-start" }}>
-            <Ico d={P.alert} size={14} color={C.amber} style={{marginTop:1,flexShrink:0}}/>{t("lookup_none")}
-          </div>
-        )}
+        <Inp label={t("phoneNumber")} icon="phone" type="tel" placeholder="(555) 000-0000" value={phone} onChange={e=>{setPhone(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&search()}/>
+        {results && results.length===0 && <div style={{ background:`${C.amber}14`, border:`1px solid ${C.amber}40`, color:C.amberD, borderRadius:10, padding:"10px 12px", marginBottom:14, fontSize:"0.82rem" }}>{t("noRequests")}</div>}
         <ErrorBar msg={err} onClose={()=>setErr("")}/>
-        <Btn full onClick={go} icon="search" disabled={busy} style={{ marginBottom:10 }}>{busy?t("lookup_searching"):t("lookup_btn")}</Btn>
-        <Btn full outline onClick={onBack}>{t("lookup_back")}</Btn>
+        <Btn full onClick={search} icon="search" disabled={busy} style={{ marginBottom:10 }}>{busy?t("searching"):t("findRequest")}</Btn>
+        <Btn full outline onClick={onBack}>{t("back")}</Btn>
       </Card>
     </div>
   );
@@ -590,6 +730,7 @@ const Lookup = ({ onBack, onNew }) => {
 // ─── Login ────────────────────────────────────────────────────
 const Login = ({ onLogin, onBack }) => {
   const m = useMobile();
+  const { t } = useLang();
   const [pw,setPw]=useState(""); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
   const go = async () => {
     if(!pw) return;
@@ -603,96 +744,166 @@ const Login = ({ onLogin, onBack }) => {
       <Card>
         <div style={{ textAlign:"center", marginBottom:22 }}>
           <div style={{ width:58, height:58, background:`linear-gradient(135deg, ${C.blue}, ${C.sky})`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 12px", boxShadow:`0 6px 18px ${C.blue}40` }}><Ico d={P.lock} size={24} color="#fff"/></div>
-          <div style={{ color:C.text, fontWeight:800, fontSize:"1.15rem" }}>Mechanic Login</div>
-          <div style={{ color:C.text2, fontSize:"0.8rem", marginTop:4 }}>Dashboard access only</div>
+          <div style={{ color:C.text, fontWeight:800, fontSize:"1.15rem" }}>{t("mechLogin")}</div>
+          <div style={{ color:C.text2, fontSize:"0.8rem", marginTop:4 }}>{t("dashOnly")}</div>
         </div>
-        <Inp label="Password" icon="lock" type="password" placeholder="Enter password" value={pw} onChange={e=>{setPw(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&go()}/>
+        <Inp label={t("password")} icon="lock" type="password" placeholder={t("enterPassword")} value={pw} onChange={e=>{setPw(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&go()}/>
         <ErrorBar msg={err} onClose={()=>setErr("")}/>
-        <Btn full onClick={go} icon="lock" disabled={busy} style={{ marginBottom:10 }}>{busy?"Signing in…":"Enter Dashboard"}</Btn>
-        <Btn full outline onClick={onBack}>← Back</Btn>
+        <Btn full onClick={go} icon="lock" disabled={busy} style={{ marginBottom:10 }}>{busy?t("signingIn"):t("enterDashboard")}</Btn>
+        <Btn full outline onClick={onBack}>{t("back")}</Btn>
       </Card>
     </div>
   );
 };
 
-// ─── Request Card (mechanic — English) ────────────────────────
-const ReqCard = ({ req, onPatch, busyId }) => {
+// ─── Request Card (mechanic dashboard) ────────────────────────
+const ReqCard = ({ req, onPatch, busyId, repeat }) => {
   const [showMap,setShowMap]=useState(false);
-  const [showEdit,setShowEdit]=useState(false);
-  const [notes,setNotes]=useState(req.notes||"");
-  const [price,setPrice]=useState(req.price||"");
+  const [showAdmin,setShowAdmin]=useState(false);
+  const [noteDraft,setNoteDraft]=useState(req.notes||"");
+  const [priceDraft,setPriceDraft]=useState(req.price||"");
+  const [savingAdmin,setSavingAdmin]=useState(false);
+  const [etaOpen,setEtaOpen]=useState(false);
+  const [etaDraft,setEtaDraft]=useState(req.eta||"");
+  const [etaBusy,setEtaBusy]=useState(false);
   const active=["pending","accepted","onway"].includes(req.status);
+  const closed=["done","dismissed","cancelled"].includes(req.status);
   const svcCol = req.svc==="Towing" ? C.blue : C.sky;
   const busy = busyId === req.id;
+  const priceText = formatPrice(req.price);
+
+  const saveAdmin = async () => {
+    setSavingAdmin(true);
+    try { await onPatch(req.id, { notes:noteDraft, price:priceDraft.replace(/[^0-9.]/g,"") }); setShowAdmin(false); }
+    catch {} finally { setSavingAdmin(false); }
+  };
+  const startOnway = async () => { setEtaBusy(true); try { await onPatch(req.id, { status:"onway", eta:etaDraft }); setEtaOpen(false); } catch {} finally { setEtaBusy(false); } };
+  const saveEta    = async () => { setEtaBusy(true); try { await onPatch(req.id, { eta:etaDraft }); setEtaOpen(false); } catch {} finally { setEtaBusy(false); } };
+
   return (
     <Card accent={active}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10, gap:8 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
           <div style={{ width:36, height:36, borderRadius:10, background:`${svcCol}14`, border:`1px solid ${svcCol}33`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><Ico d={P[req.svc==="Towing"?"tow":"wrench"]} size={17} color={svcCol}/></div>
-          <div style={{ minWidth:0 }}><div style={{ color:C.text, fontWeight:800, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{req.name}</div><div style={{ color:svcCol, fontSize:"0.68rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em" }}>{req.svc}</div></div>
+          <div style={{ minWidth:0 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:6, minWidth:0 }}>
+              <div style={{ color:C.text, fontWeight:800, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{req.name}</div>
+              {repeat>1 && <span style={{ background:`${C.amber}1f`, color:C.amberD, border:`1px solid ${C.amber}55`, borderRadius:5, padding:"1px 6px", fontSize:"0.6rem", fontWeight:800, whiteSpace:"nowrap", flexShrink:0 }}>★ x{repeat}</span>}
+            </div>
+            <div style={{ color:svcCol, fontSize:"0.68rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em" }}>{req.svc}</div>
+          </div>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
-          {req.price&&<span style={{ background:`${C.green}1a`, color:C.green, border:`1px solid ${C.green}40`, borderRadius:6, padding:"2px 8px", fontSize:"0.72rem", fontWeight:800 }}>{fmtMoney(parsePrice(req.price))}</span>}
+          {priceText && <span style={{ background:`${C.green}1a`, color:C.green, border:`1px solid ${C.green}40`, borderRadius:6, padding:"2px 8px", fontSize:"0.78rem", fontWeight:800 }}>{priceText}</span>}
           <Badge status={req.status}/>
         </div>
       </div>
       <div style={{ background:`${C.blue}0d`, border:`1px solid ${C.blue}20`, borderRadius:9, padding:"7px 11px", marginBottom:10, display:"inline-flex", alignItems:"center", gap:7 }}><Ico d={P.car} size={13} color={C.blue}/><span style={{ color:C.blue, fontWeight:700, fontSize:"0.85rem" }}>{req.year} {req.make} {req.model}</span></div>
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8 }}>
-        <div style={{ minWidth:0 }}>
-          <Lbl icon="phone">Phone</Lbl>
-          <a href={telHref(req.phone)} style={{ color:C.blue, fontSize:"0.85rem", fontWeight:600, textDecoration:"none" }}>{req.phone}</a>
-        </div>
+        <div style={{ minWidth:0 }}><Lbl icon="phone">Phone</Lbl><a href={"tel:"+req.phone} style={{ color:C.blue, fontSize:"0.85rem", fontWeight:600, textDecoration:"none", wordBreak:"break-word" }}>{req.phone}</a></div>
         <div style={{ minWidth:0 }}>
           <Lbl icon="loc">Location</Lbl>
           <div style={{ display:"flex", alignItems:"center", gap:6 }}>
             <div style={{ color:C.text, fontSize:"0.85rem", flex:1, minWidth:0, wordBreak:"break-word" }}>{req.loc}</div>
-            <button onClick={()=>setShowMap(v=>!v)} title="Preview map" style={{ background:showMap?`${C.blue}14`:"transparent", border:"none", cursor:"pointer", padding:5, borderRadius:6, flexShrink:0 }}><Ico d={P.map} size={15} color={showMap?C.blue:C.text3}/></button>
+            <button onClick={()=>setShowMap(v=>!v)} style={{ background:showMap?`${C.blue}14`:"transparent", border:"none", cursor:"pointer", padding:5, borderRadius:6, flexShrink:0 }}><Ico d={P.map} size={15} color={showMap?C.blue:C.text3}/></button>
           </div>
           {showMap&&<MapEmbed location={req.loc}/>}
         </div>
         {req.urg==="Scheduled"&&req.schedTime&&<div style={{ gridColumn:"1/-1" }}><Lbl icon="cal">Scheduled</Lbl><div style={{ color:C.amberD, fontSize:"0.85rem", fontWeight:700 }}>{new Date(req.schedTime).toLocaleString()}</div></div>}
       </div>
       {req.issue&&<div style={{ color:C.text2, fontSize:"0.83rem", marginBottom:10, fontStyle:"italic", padding:"9px 11px", background:C.surface2, borderRadius:8 }}>"{req.issue}"</div>}
-      {req.notes&&!showEdit&&<div style={{ color:C.text2, fontSize:"0.82rem", marginBottom:10, padding:"9px 11px", background:`${C.amber}10`, border:`1px solid ${C.amber}33`, borderRadius:8, display:"flex", gap:7, alignItems:"flex-start" }}><Ico d={P.note} size={13} color={C.amberD} style={{marginTop:1,flexShrink:0}}/><span><b style={{color:C.amberD}}>Note:</b> {req.notes}</span></div>}
+      {req.notes&&!showAdmin&&<div style={{ color:C.text2, fontSize:"0.8rem", marginBottom:10, padding:"9px 11px", background:`${C.amber}10`, border:`1px solid ${C.amber}33`, borderRadius:8, display:"flex", gap:7, alignItems:"flex-start" }}><Ico d={P.edit} size={12} color={C.amberD} style={{marginTop:2,flexShrink:0}}/><span style={{ wordBreak:"break-word" }}>{req.notes}</span></div>}
       <div style={{ color:C.text3, fontSize:"0.7rem", marginBottom:12, display:"flex", alignItems:"center", gap:5 }}><Ico d={P.clock} size={11} color={C.text3}/>Submitted {new Date(req.submittedAt).toLocaleString()}</div>
 
-      <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
-        {req.status==="pending"&&<><Btn small onClick={()=>onPatch(req.id,{status:"accepted"})} icon="check" disabled={busy}>Accept</Btn><Btn small outline color={C.text2} onClick={()=>onPatch(req.id,{status:"dismissed"})} disabled={busy}>Dismiss</Btn></>}
-        {req.status==="accepted"&&<Btn small color={C.sky} onClick={()=>onPatch(req.id,{status:"onway"})} icon="tow" disabled={busy}>On the Way</Btn>}
-        {req.status==="onway"&&<Btn small color={C.green} onClick={()=>onPatch(req.id,{status:"done"})} icon="check" disabled={busy}>Mark Done</Btn>}
-        <a href={dirHref(req.loc)} target="_blank" rel="noopener noreferrer" style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"8px 14px", borderRadius:9, border:`1.5px solid ${C.border}`, background:"#fff", color:C.text2, fontSize:"0.75rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.04em", textDecoration:"none" }}><Ico d={P.nav} size={14} color={C.blue}/>Directions</a>
-        <a href={telHref(req.phone)} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"8px 14px", borderRadius:9, border:`1.5px solid ${C.border}`, background:"#fff", color:C.text2, fontSize:"0.75rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.04em", textDecoration:"none" }}><Ico d={P.phone} size={14} color={C.green}/>Call</a>
-        <button onClick={()=>setShowEdit(v=>!v)} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"8px 14px", borderRadius:9, border:`1.5px solid ${showEdit?C.blue:C.border}`, background:showEdit?`${C.blue}0d`:"#fff", color:showEdit?C.blue:C.text2, fontSize:"0.75rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.04em", cursor:"pointer" }}><Ico d={P.note} size={14} color={showEdit?C.blue:C.text2}/>Note / Price</button>
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom: showAdmin?12:8 }}>
+        <Btn small outline href={mapsDir(req.loc)} target="_blank" icon="nav">Directions</Btn>
+        <Btn small outline color={C.text2} onClick={()=>setShowAdmin(v=>!v)} icon="edit">Notes / Price</Btn>
       </div>
 
-      {showEdit&&(
-        <div style={{ marginTop:12, padding:"12px 13px", background:C.surface2, borderRadius:10, border:`1px solid ${C.border}` }}>
-          <Lbl icon="note">Private Note</Lbl>
-          <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Parts needed, gate code, follow-up…" style={{ ...fieldStyle, minHeight:64, resize:"vertical", marginBottom:10 }}/>
-          <Lbl icon="dollar">Price Charged</Lbl>
-          <div style={{ display:"flex", gap:8, marginTop:4 }}>
-            <input value={price} onChange={e=>setPrice(e.target.value)} placeholder="e.g. 150" inputMode="decimal" style={{ ...fieldStyle, flex:1 }}/>
-            <Btn small onClick={()=>onPatch(req.id,{notes,price})} icon="check" disabled={busy}>{busy?"Saving…":"Save"}</Btn>
+      {showAdmin && (
+        <div style={{ background:C.surface2, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px", marginBottom:12 }}>
+          <Lbl>Price</Lbl>
+          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:12 }}>
+            <span style={{ color:C.text2, fontWeight:800, fontSize:"1rem" }}>$</span>
+            <input value={priceDraft} onChange={e=>setPriceDraft(e.target.value)} placeholder="0" inputMode="decimal" style={{ ...fieldStyle, padding:"9px 11px" }}/>
+          </div>
+          <Lbl>Private Notes</Lbl>
+          <textarea value={noteDraft} onChange={e=>setNoteDraft(e.target.value)} placeholder="Parts needed, gate code, follow-up…" style={{ ...fieldStyle, resize:"vertical", minHeight:64, marginBottom:8 }}/>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, flexWrap:"wrap" }}>
+            <span style={{ color:C.text3, fontSize:"0.7rem", display:"flex", alignItems:"center", gap:5 }}><Ico d={P.lock} size={11} color={C.text3}/>Mechanic only — customers never see this</span>
+            <Btn small onClick={saveAdmin} icon="check" disabled={savingAdmin}>{savingAdmin?"Saving…":"Save"}</Btn>
           </div>
         </div>
       )}
+
+      {req.status==="pending"&&<div style={{ display:"flex", gap:8, flexWrap:"wrap" }}><Btn small onClick={()=>onPatch(req.id,{status:"accepted"})} icon="check" disabled={busy}>Accept</Btn><Btn small outline color={C.text2} onClick={()=>onPatch(req.id,{status:"dismissed"})} disabled={busy}>Dismiss</Btn></div>}
+
+      {req.status==="accepted"&&(
+        etaOpen ? (
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
+            <input value={etaDraft} onChange={e=>setEtaDraft(e.target.value)} placeholder="ETA e.g. ~15 min" style={{ ...fieldStyle, flex:1, minWidth:130, padding:"9px 11px" }}/>
+            <Btn small color={C.sky} onClick={startOnway} icon="tow" disabled={etaBusy}>{etaBusy?"…":"On the Way"}</Btn>
+            <Btn small outline color={C.text2} onClick={()=>setEtaOpen(false)} disabled={etaBusy}>Cancel</Btn>
+          </div>
+        ) : (
+          <Btn small color={C.sky} onClick={()=>{setEtaDraft(req.eta||"");setEtaOpen(true);}} icon="tow" disabled={busy}>On the Way</Btn>
+        )
+      )}
+
+      {req.status==="onway"&&(
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+            <span style={{ fontSize:"0.8rem", color:C.text2 }}><b style={{ color:C.text }}>ETA:</b> {req.eta || "not set"}</span>
+            {!etaOpen && <button onClick={()=>{setEtaDraft(req.eta||"");setEtaOpen(true);}} style={{ background:"transparent", border:"none", color:C.blue, fontWeight:700, fontSize:"0.72rem", cursor:"pointer", textTransform:"uppercase" }}>Edit ETA</button>}
+          </div>
+          {etaOpen && (
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              <input value={etaDraft} onChange={e=>setEtaDraft(e.target.value)} placeholder="e.g. ~15 min" style={{ ...fieldStyle, flex:1, minWidth:130, padding:"9px 11px" }}/>
+              <Btn small onClick={saveEta} icon="check" disabled={etaBusy}>{etaBusy?"…":"Save"}</Btn>
+              <Btn small outline color={C.text2} onClick={()=>setEtaOpen(false)} disabled={etaBusy}>Cancel</Btn>
+            </div>
+          )}
+          <div><Btn small color={C.green} onClick={()=>onPatch(req.id,{status:"done"})} icon="check" disabled={busy}>Mark Done</Btn></div>
+        </div>
+      )}
+
+      {closed&&<Btn small outline color={C.blue} onClick={()=>onPatch(req.id,{status:"accepted"})} icon="refresh" disabled={busy}>Reopen Job</Btn>}
     </Card>
   );
 };
 
-// ─── Dashboard (mechanic — English) ───────────────────────────
-const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangePassword, onLogout, busy, onBusyToggle }) => {
+// ─── Dashboard ────────────────────────────────────────────────
+const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangePassword, onLogout, busy, onBusy }) => {
   const m = useMobile();
   const [tab,setTab]=useState("queue");
   const [requests,setRequests]=useState([]);
   const [loading,setLoading]=useState(true);
   const [err,setErr]=useState("");
   const [busyId,setBusyId]=useState(null);
-  const [search,setSearch]=useState("");
+  const [query,setQuery]=useState("");
+  const [alertsOn,setAlertsOn]=useState(getAlerts);
 
   const [newBiz,setNewBiz]=useState(bizName);
   const [curPw,setCurPw]=useState(""); const [newPw,setNewPw]=useState(""); const [confPw,setConfPw]=useState("");
   const [pwMsg,setPwMsg]=useState(""); const [bizMsg,setBizMsg]=useState("");
+
+  const audioRef=useRef(null);
+  const alertsRef=useRef(alertsOn);
+  const firstLoad=useRef(true);
+  const lastMaxId=useRef(0);
+  useEffect(()=>{ alertsRef.current=alertsOn; },[alertsOn]);
+
+  const beep=()=>{ const ctx=audioRef.current; if(!ctx) return; try {
+    const mk=(freq,start,dur)=>{ const o=ctx.createOscillator(), g=ctx.createGain(); o.connect(g); g.connect(ctx.destination); o.type="sine"; o.frequency.value=freq; const t0=ctx.currentTime+start; g.gain.setValueAtTime(0.0001,t0); g.gain.exponentialRampToValueAtTime(0.3,t0+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t0+dur); o.start(t0); o.stop(t0+dur+0.02); };
+    mk(880,0,0.25); mk(1175,0.18,0.3);
+  } catch {} };
+  const enableAlerts=()=>{
+    try { const AC=window.AudioContext||window.webkitAudioContext; if(AC){ if(!audioRef.current) audioRef.current=new AC(); if(audioRef.current.state==="suspended") audioRef.current.resume(); } } catch {}
+    if(typeof Notification!=="undefined" && Notification.permission==="default"){ try { Notification.requestPermission(); } catch {} }
+    setAlertsOn(true); setAlertsLS(true); beep();
+  };
+  const disableAlerts=()=>{ setAlertsOn(false); setAlertsLS(false); };
+  const notifyNew=(r)=>{ beep(); try { if(typeof Notification!=="undefined" && Notification.permission==="granted"){ new Notification("New service request — "+(bizName||"AMS"), { body:`${r.name} · ${r.svc} · ${r.loc}`, tag:"ams-"+r.id }); } } catch {} };
 
   const authApi = useCallback(async (path, opts={}) => {
     try { return await api(path, { ...opts, auth:true }); }
@@ -711,30 +922,69 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
     return () => clearInterval(iv);
   },[loadRequests]);
 
+  // New-request alert: fire when a new pending request appears after the first load.
+  useEffect(()=>{
+    if(loading) return;
+    const ids=requests.map(r=>r.id);
+    const maxId=ids.length?Math.max(...ids):0;
+    if(firstLoad.current){ firstLoad.current=false; lastMaxId.current=maxId; return; }
+    if(alertsRef.current){
+      const fresh=requests.filter(r=>r.id>lastMaxId.current && r.status==="pending");
+      if(fresh.length) notifyNew(fresh[0]);
+    }
+    if(maxId>lastMaxId.current) lastMaxId.current=maxId;
+  },[requests, loading]); // eslint-disable-line
+
   const patchRequest = async (id, body) => {
     setBusyId(id);
     try { const updated = await authApi("/api/requests/"+id, { method:"PATCH", body });
-      setRequests(rs => rs.map(r => r.id===id ? updated : r)); setErr(""); }
-    catch (e) { if (e.status !== 401) setErr(e.message); }
+      setRequests(rs => rs.map(r => r.id===id ? updated : r)); setErr(""); return updated; }
+    catch (e) { if (e.status !== 401) setErr(e.message); throw e; }
     finally { setBusyId(null); }
   };
 
+  const todayStr=new Date().toDateString();
   const pending=requests.filter(r=>r.status==="pending").length;
   const active=requests.filter(r=>["accepted","onway"].includes(r.status)).length;
-  const todayStr=new Date().toDateString();
-  const weekAgo=Date.now()-7*24*60*60*1000;
-  const doneToday=requests.filter(r=>r.status==="done"&&new Date(r.submittedAt).toDateString()===todayStr).length;
+  const doneToday=requests.filter(r=>r.status==="done"&&doneDate(r).toDateString()===todayStr).length;
   const allDone=requests.filter(r=>r.status==="done").length;
-  const earnToday=requests.filter(r=>r.status==="done"&&new Date(r.submittedAt).toDateString()===todayStr).reduce((s,r)=>s+parsePrice(r.price),0);
-  const earnWeek=requests.filter(r=>r.status==="done"&&new Date(r.submittedAt).getTime()>=weekAgo).reduce((s,r)=>s+parsePrice(r.price),0);
 
-  const q=search.trim().toLowerCase();
-  const shownRequests = q
-    ? requests.filter(r => (r.name||"").toLowerCase().includes(q) || (r.phone||"").toLowerCase().includes(q) || `${r.year} ${r.make} ${r.model}`.toLowerCase().includes(q) || (r.loc||"").toLowerCase().includes(q))
-    : requests;
+  const weekStart=new Date(); weekStart.setHours(0,0,0,0); weekStart.setDate(weekStart.getDate()-6);
+  const monthStart=new Date(); monthStart.setHours(0,0,0,0); monthStart.setDate(1);
+  const done=requests.filter(r=>r.status==="done");
+  const earnToday=done.filter(r=>doneDate(r).toDateString()===todayStr).reduce((s,r)=>s+priceNum(r.price),0);
+  const earnWeek=done.filter(r=>doneDate(r)>=weekStart).reduce((s,r)=>s+priceNum(r.price),0);
+  const monthJobs=done.filter(r=>doneDate(r)>=monthStart);
+  const earnMonth=monthJobs.reduce((s,r)=>s+priceNum(r.price),0);
+  const towMonth=monthJobs.filter(r=>r.svc==="Towing").reduce((s,r)=>s+priceNum(r.price),0);
+  const mechMonth=monthJobs.filter(r=>r.svc==="Mechanical").reduce((s,r)=>s+priceNum(r.price),0);
+  const money=(n)=>"$"+n.toFixed(2).replace(/\.00$/,"");
+
+  const phoneCounts={};
+  requests.forEach(r=>{ const k=r.phone.replace(/\D/g,""); if(k) phoneCounts[k]=(phoneCounts[k]||0)+1; });
+
+  const qd=query.replace(/\D/g,"");
+  const visible=requests.filter(r=>{
+    if(!query.trim()) return true;
+    const q=query.toLowerCase();
+    return r.name.toLowerCase().includes(q)
+      || (qd.length>=3 && r.phone.replace(/\D/g,"").includes(qd))
+      || `${r.year} ${r.make} ${r.model}`.toLowerCase().includes(q);
+  });
 
   const todayJobs=requests.filter(r=>["accepted","onway","done"].includes(r.status)&&new Date(r.submittedAt).toDateString()===todayStr)
     .sort((a,b)=>(a.urg==="Scheduled"?new Date(a.schedTime):new Date(a.submittedAt))-(b.urg==="Scheduled"?new Date(b.schedTime):new Date(b.submittedAt)));
+
+  const exportCSV = () => {
+    const cols=["id","submitted","status","name","phone","service","urgency","vehicle","location","issue","price","eta","accepted_at","onway_at","done_at","notes"];
+    const esc=(v)=>{ const s=String(v==null?"":v); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; };
+    const rows=requests.map(r=>{ const st=r.statusTimes||{}; return [r.id,r.submittedAt,r.status,r.name,r.phone,r.svc,r.urg,`${r.year} ${r.make} ${r.model}`,r.loc,r.issue,r.price,r.eta,st.accepted||"",st.onway||"",st.done||"",r.notes].map(esc).join(","); });
+    const csv=[cols.join(","),...rows].join("\n");
+    const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a"); a.href=url; a.download=`ams-jobs-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  };
 
   const saveBiz = async () => {
     try { await onBizName(newBiz); setBizMsg("✓ Saved!"); setTimeout(()=>setBizMsg(""),2500); }
@@ -765,24 +1015,36 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
       </div>
 
       <div style={{ padding:m?"16px 12px":18 }}>
-        {busy&&(
-          <div style={{ ...card(), borderRadius:12, padding:"11px 14px", marginBottom:14, borderLeft:`4px solid ${C.red}`, display:"flex", gap:9, alignItems:"center", color:"#b91c1c", fontSize:"0.82rem", fontWeight:600 }}>
-            <Ico d={P.alert} size={15} color={C.red}/>Busy mode is ON — customers see a "we'll call you back" message.
-          </div>
-        )}
         <ErrorBar msg={err} onClose={()=>setErr("")}/>
 
+        {busy && (
+          <div style={{ background:`${C.amber}1f`, border:`1px solid ${C.amber}66`, color:"#fff", borderRadius:10, padding:"9px 13px", marginBottom:12, fontSize:"0.8rem", fontWeight:600, display:"flex", gap:7, alignItems:"center" }}>
+            <Ico d={P.alert} size={14} color="#fbbf24"/>Busy mode is ON — customers see the "we'll call you back" notice.
+          </div>
+        )}
+
         {tab==="queue"&&<>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
-            {[["Today",earnToday,C.green],["This Week",earnWeek,C.sky]].map(([l,v,c])=>(
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+            {[["Earned Today",earnToday,C.green],["This Week",earnWeek,C.sky]].map(([l,v,c])=>(
               <div key={l} style={{ ...card(), borderRadius:14, padding:"15px 16px", borderTop:`4px solid ${c}` }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                  <div style={{ color:c, fontWeight:900, fontSize:"1.7rem" }}>{fmtMoney(v)}</div>
-                  <div style={{ background:`${c}18`, borderRadius:10, width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center" }}><Ico d={P.dollar} size={17} color={c}/></div>
+                  <div style={{ color:c, fontWeight:900, fontSize:"1.6rem" }}>{money(v)}</div>
+                  <div style={{ background:`${c}18`, borderRadius:10, width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", color:c, fontWeight:900, fontSize:"1.1rem" }}>$</div>
                 </div>
-                <div style={{ color:C.text2, fontSize:"0.68rem", textTransform:"uppercase", letterSpacing:"0.07em", marginTop:4, fontWeight:600 }}>{l}'s Earnings</div>
+                <div style={{ color:C.text2, fontSize:"0.68rem", textTransform:"uppercase", letterSpacing:"0.07em", marginTop:4, fontWeight:600 }}>{l}</div>
               </div>
             ))}
+          </div>
+          <div style={{ ...card(), borderRadius:14, padding:"15px 16px", marginBottom:10, borderTop:`4px solid ${C.blue}` }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline" }}>
+              <div style={{ color:C.text2, fontSize:"0.68rem", textTransform:"uppercase", letterSpacing:"0.07em", fontWeight:700 }}>This Month</div>
+              <div style={{ color:C.blue, fontWeight:900, fontSize:"1.5rem" }}>{money(earnMonth)}</div>
+            </div>
+            <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginTop:8, color:C.text2, fontSize:"0.75rem", fontWeight:600 }}>
+              <span><Ico d={P.tow} size={11} color={C.blue} style={{verticalAlign:"-1px",marginRight:4}}/>Towing {money(towMonth)}</span>
+              <span><Ico d={P.wrench} size={11} color={C.sky} style={{verticalAlign:"-1px",marginRight:4}}/>Mechanical {money(mechMonth)}</span>
+              <span style={{ color:C.text3 }}>{monthJobs.length} job{monthJobs.length===1?"":"s"}</span>
+            </div>
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
             {STATS.map(([n,l,c,ic])=>(
@@ -795,23 +1057,23 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
               </div>
             ))}
           </div>
-
-          <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:10 }}>
-            <div style={{ position:"relative", flex:1 }}>
-              <span style={{ position:"absolute", left:11, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }}><Ico d={P.search} size={15} color={C.text3}/></span>
-              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by name, phone, vehicle…" style={{ ...fieldStyle, paddingLeft:34 }}/>
-              {search&&<button onClick={()=>setSearch("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"transparent", border:"none", cursor:"pointer", color:C.text3, fontWeight:800, fontSize:"0.9rem" }}>✕</button>}
-            </div>
-            <button onClick={loadRequests} style={{ background:"rgba(255,255,255,0.92)", border:`1px solid ${C.border}`, borderRadius:9, color:C.text2, fontSize:"0.74rem", fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:5, padding:"11px 13px", flexShrink:0 }}><Ico d={P.refresh} size={13} color={C.text2}/>{!m&&"Refresh"}</button>
+          <div style={{ marginBottom:10, position:"relative" }}>
+            <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", display:"flex" }}><Ico d={P.search} size={15} color={C.text3}/></span>
+            <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search by name, phone, or vehicle" style={{ ...fieldStyle, paddingLeft:34 }}/>
           </div>
-
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8, gap:8 }}>
+            <button onClick={alertsOn?disableAlerts:enableAlerts} style={{ background:alertsOn?`${C.green}1f`:"rgba(255,255,255,0.92)", border:`1px solid ${alertsOn?C.green:"rgba(255,255,255,0.5)"}`, color:alertsOn?C.green:C.text2, borderRadius:9, padding:"7px 11px", fontSize:"0.72rem", fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+              <Ico d={P.bell} size={13} color={alertsOn?C.green:C.text2}/>{alertsOn?"Alerts on":"Enable alerts"}
+            </button>
+            <button onClick={loadRequests} style={{ background:"transparent", border:"none", color:ON.t2, fontSize:"0.74rem", fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", gap:5 }}><Ico d={P.refresh} size={13} color={ON.t2}/>Refresh</button>
+          </div>
           {loading
             ? <div style={{ color:ON.t2, textAlign:"center", padding:"48px 0", fontSize:"0.9rem" }}>Loading requests…</div>
             : requests.length===0
               ? <div style={{ color:ON.t3, textAlign:"center", padding:"56px 0", fontSize:"0.9rem" }}><Ico d={P.list} size={34} color="rgba(255,255,255,0.35)" style={{ display:"block", margin:"0 auto 12px" }}/>No requests yet.</div>
-              : shownRequests.length===0
-                ? <div style={{ color:ON.t3, textAlign:"center", padding:"48px 0", fontSize:"0.9rem" }}><Ico d={P.search} size={30} color="rgba(255,255,255,0.35)" style={{ display:"block", margin:"0 auto 12px" }}/>No matches for "{search}".</div>
-                : shownRequests.map(r=><ReqCard key={r.id} req={r} onPatch={patchRequest} busyId={busyId}/>)
+              : visible.length===0
+                ? <div style={{ color:ON.t3, textAlign:"center", padding:"48px 0", fontSize:"0.9rem" }}>No jobs match "{query}".</div>
+                : visible.map(r=><ReqCard key={r.id} req={r} onPatch={patchRequest} busyId={busyId} repeat={phoneCounts[r.phone.replace(/\D/g,"")]||1}/>)
           }
         </>}
 
@@ -827,12 +1089,11 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
                 </div>
                 <div style={{ fontWeight:800, color:C.text, marginBottom:4 }}>{r.name} <span style={{ color:r.svc==="Towing"?C.blue:C.sky, fontWeight:600, fontSize:"0.85rem" }}>— {r.svc}</span></div>
                 <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}><Ico d={P.car} size={12} color={C.blue}/><span style={{ color:C.blue, fontSize:"0.82rem", fontWeight:700 }}>{r.year} {r.make} {r.model}</span></div>
-                <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}><Ico d={P.loc} size={12} color={C.text3}/><span style={{ color:C.text2, fontSize:"0.82rem" }}>{r.loc}</span></div>
-                {r.issue&&<div style={{ color:C.text3, fontSize:"0.78rem", fontStyle:"italic", marginBottom:8 }}>"{r.issue}"</div>}
-                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                  <a href={dirHref(r.loc)} target="_blank" rel="noopener noreferrer" style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"7px 12px", borderRadius:8, border:`1.5px solid ${C.border}`, background:"#fff", color:C.text2, fontSize:"0.72rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.04em", textDecoration:"none" }}><Ico d={P.nav} size={13} color={C.blue}/>Directions</a>
-                  <a href={telHref(r.phone)} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"7px 12px", borderRadius:8, border:`1.5px solid ${C.border}`, background:"#fff", color:C.text2, fontSize:"0.72rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.04em", textDecoration:"none" }}><Ico d={P.phone} size={13} color={C.green}/>Call</a>
+                <div style={{ display:"flex", alignItems:"center", gap:6, justifyContent:"space-between", flexWrap:"wrap" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:6, minWidth:0 }}><Ico d={P.loc} size={12} color={C.text3}/><span style={{ color:C.text2, fontSize:"0.82rem", wordBreak:"break-word" }}>{r.loc}</span></div>
+                  <Btn small outline href={mapsDir(r.loc)} target="_blank" icon="nav">Directions</Btn>
                 </div>
+                {r.issue&&<div style={{ color:C.text3, fontSize:"0.78rem", fontStyle:"italic", marginTop:6 }}>"{r.issue}"</div>}
               </Card>
             ))
           }
@@ -864,21 +1125,28 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
         {tab==="settings"&&<>
           <SectionHead icon="cog">Settings</SectionHead>
           <Card>
-            <Lbl icon="alert">Busy Mode</Lbl>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, marginTop:8 }}>
-              <div style={{ color:C.text2, fontSize:"0.82rem", flex:1 }}>When on, the request form shows a "we'll call you back" message. Customers can still submit.</div>
-              <div onClick={()=>onBusyToggle(!busy)} style={{ width:46, height:26, borderRadius:13, cursor:"pointer", position:"relative", background:busy?C.red:C.surface3, transition:"background .2s", flexShrink:0 }}>
-                <div style={{ position:"absolute", top:3, left:busy?23:3, width:20, height:20, borderRadius:"50%", background:"#fff", transition:"left .2s", boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }}/>
-              </div>
-            </div>
-          </Card>
-          <Card>
             <Lbl icon="user">Business Name</Lbl>
             <div style={{ display:"flex", gap:8, marginTop:8 }}>
               <input value={newBiz} onChange={e=>setNewBiz(e.target.value)} style={{ ...fieldStyle, flex:1 }}/>
               <Btn small onClick={saveBiz} icon="check">Save</Btn>
             </div>
             {bizMsg&&<div style={{ color:bizMsg.startsWith("✓")?C.green:C.red, fontSize:"0.78rem", marginTop:6, fontWeight:600 }}>{bizMsg}</div>}
+          </Card>
+          <Card>
+            <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:12 }}>
+              <div style={{ minWidth:0 }}>
+                <Lbl icon="alert">Busy Mode</Lbl>
+                <div style={{ color:C.text2, fontSize:"0.8rem", lineHeight:1.4 }}>Turn on when you're slammed. Customers see a "we'll call you back" notice and the button becomes "Request a Callback." Requests still come through.</div>
+              </div>
+              <div onClick={()=>onBusy(!busy)} style={{ width:46, height:26, borderRadius:13, cursor:"pointer", position:"relative", background:busy?C.amber:C.surface3, transition:"background .2s", flexShrink:0, marginTop:2 }}>
+                <div style={{ position:"absolute", top:3, left:busy?23:3, width:20, height:20, borderRadius:"50%", background:"#fff", transition:"left .2s", boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }}/>
+              </div>
+            </div>
+          </Card>
+          <Card>
+            <Lbl icon="download">Data Export</Lbl>
+            <div style={{ color:C.text2, fontSize:"0.8rem", lineHeight:1.4, marginBottom:10 }}>Download all jobs — including prices and timestamps — as a CSV file for bookkeeping or taxes.</div>
+            <Btn small onClick={exportCSV} icon="download">Download CSV</Btn>
           </Card>
           <Card>
             <Lbl icon="lock">Change Password</Lbl>
@@ -901,8 +1169,8 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
 export default function App() {
   const isMobile = useIsMobile(640);
   const [lang,setLangState]=useState(getLang);
-  const setLang = useCallback((l)=>{ setLangState(l); setLangLS(l); },[]);
-  const t = useCallback((k)=>{ const d=T[lang]||T.en; return (k in d ? d[k] : (k in T.en ? T.en[k] : k)); },[lang]);
+  const setLang=(l)=>{ setLangState(l); setLangLS(l); };
+  const t=useCallback((k)=> (STR[lang] && STR[lang][k]) || STR.en[k] || k, [lang]);
 
   const [view,setView]=useState("customer");
   const [bizName,setBizName]=useState("AMS");
@@ -917,7 +1185,7 @@ export default function App() {
       try {
         const [settings, avail] = await Promise.all([ api("/api/settings"), api("/api/availability") ]);
         if (settings?.bizName) setBizName(settings.bizName);
-        if (settings && typeof settings.busy === "boolean") setBusy(settings.busy);
+        if (typeof settings?.busy === "boolean") setBusy(settings.busy);
         if (avail) setAvailability(avail);
       } catch {
         setGlobalErr("Couldn't reach the server. Make sure the backend is running.");
@@ -945,10 +1213,10 @@ export default function App() {
     const res = await api("/api/settings/business-name", { method:"PUT", body:{ bizName:name }, auth:true });
     setBizName(res.bizName);
   };
-  const handleBusyToggle = async (val) => {
-    setBusy(val);
-    try { const res = await api("/api/settings/busy", { method:"PUT", body:{ busy: val }, auth:true }); setBusy(res.busy); }
-    catch (e) { if (e.status === 401) handleLogout(); else setBusy(!val); }
+  const handleBusy = async (next) => {
+    setBusy(next);
+    try { await api("/api/settings/busy", { method:"PUT", body:{ busy:next }, auth:true }); }
+    catch (e) { if (e.status === 401) handleLogout(); }
   };
   const handleChangePassword = async (current, nw) => {
     await api("/api/change-password", { method:"POST", body:{ current, new:nw }, auth:true });
@@ -965,10 +1233,10 @@ export default function App() {
               <div style={{ maxWidth:600, margin:"14px auto 0", padding:"0 16px" }}><ErrorBar msg={globalErr} onClose={()=>setGlobalErr("")}/></div>
             )}
             {view==="customer"&&<CustomerForm availability={availability} busy={busy} onSubmit={handleSubmit} onTrack={()=>setView("lookup")}/>}
-            {view==="lookup"&&<Lookup onBack={()=>setView("customer")} onNew={()=>{setActiveReq(null);setView("customer");}}/>}
-            {view==="confirm"&&activeReq&&<Confirmation initialReq={activeReq} onNew={()=>{setActiveReq(null);setView("customer");}}/>}
+            {view==="lookup"&&<Lookup onBack={()=>setView("customer")}/>}
+            {view==="confirm"&&activeReq&&<Confirmation initialReq={activeReq} callback={busy} onNew={()=>{setActiveReq(null);setView("customer");}}/>}
             {view==="login"&&<Login onLogin={handleLogin} onBack={()=>setView("customer")}/>}
-            {view==="dashboard"&&<Dashboard availability={availability} onAvailability={handleAvailability} bizName={bizName} onBizName={handleBizName} onChangePassword={handleChangePassword} onLogout={handleLogout} busy={busy} onBusyToggle={handleBusyToggle}/>}
+            {view==="dashboard"&&<Dashboard availability={availability} onAvailability={handleAvailability} bizName={bizName} onBizName={handleBizName} onChangePassword={handleChangePassword} onLogout={handleLogout} busy={busy} onBusy={handleBusy}/>}
           </div>
         </div>
       </MobileCtx.Provider>
