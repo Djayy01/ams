@@ -4,16 +4,13 @@ Stack: Flask + PostgreSQL (psycopg 3)
 
 ────────────────────────────────────────────────────────
 WHAT'S NEW IN THIS VERSION
-    • status_times: a timestamp is recorded for every status change
-      (powers "Accepted 2:41 · On the Way 2:55" + exact completion time)
-    • eta column: mechanic can set an arrival estimate ("~15 min")
-    • POST /api/requests/<id>/cancel  → customer cancels their own job
-      (verified by matching the phone number on the request)
-    • 'cancelled' status added; mechanics can reactivate any job by
-      PATCHing its status back (e.g. to 'pending' or 'accepted')
-    • Spam protection on the public form: a honeypot field + a simple
-      per-IP rate limit.
-    • All schema changes use IF NOT EXISTS, so existing data is preserved.
+    • cost + tip columns on requests (so earnings can show real profit)
+    • PATCH /api/requests/<id> now also accepts cost and tip
+    • blocked_dates config: specific days the mechanic is off (vacation mode)
+      - returned publicly in /api/settings so the customer form can react
+      - PUT /api/settings/blocked-dates  (mechanic) sets the list
+    • All schema/config changes use IF NOT EXISTS / ON CONFLICT — existing
+      data is preserved.
 ────────────────────────────────────────────────────────
 """
 
@@ -92,16 +89,16 @@ def init_db():
                     status       TEXT NOT NULL DEFAULT 'pending',
                     notes        TEXT,
                     price        TEXT,
+                    cost         TEXT,
+                    tip          TEXT,
                     eta          TEXT,
                     status_times TEXT,
                     submitted_at TEXT NOT NULL
                 )
             """)
             # Add columns for databases created before each version (no-op if present).
-            cur.execute("ALTER TABLE requests ADD COLUMN IF NOT EXISTS notes TEXT")
-            cur.execute("ALTER TABLE requests ADD COLUMN IF NOT EXISTS price TEXT")
-            cur.execute("ALTER TABLE requests ADD COLUMN IF NOT EXISTS eta TEXT")
-            cur.execute("ALTER TABLE requests ADD COLUMN IF NOT EXISTS status_times TEXT")
+            for col in ("notes", "price", "cost", "tip", "eta", "status_times"):
+                cur.execute(f"ALTER TABLE requests ADD COLUMN IF NOT EXISTS {col} TEXT")
             # Backfill a 'pending' timestamp for older rows so their tracker has a start time.
             cur.execute(
                 "UPDATE requests SET status_times = json_build_object('pending', submitted_at)::text "
@@ -123,7 +120,9 @@ def init_db():
                 }
                 for k, v in seed.items():
                     cur.execute("INSERT INTO config (key, value) VALUES (%s, %s)", (k, v))
+            # Ensure these config keys exist for both new and existing databases.
             cur.execute("INSERT INTO config (key, value) VALUES ('busy', 'false') ON CONFLICT (key) DO NOTHING")
+            cur.execute("INSERT INTO config (key, value) VALUES ('blocked_dates', '[]') ON CONFLICT (key) DO NOTHING")
         conn.commit()
 
 
@@ -169,10 +168,18 @@ def row_to_request(r):
         "id": r["id"], "name": r["name"], "phone": r["phone"], "loc": r["loc"],
         "year": r["year"], "make": r["make"], "model": r["model"], "issue": r["issue"],
         "svc": r["svc"], "urg": r["urg"], "schedTime": r["sched_time"] or "",
-        "status": r["status"], "notes": r.get("notes") or "", "price": r.get("price") or "",
+        "status": r["status"], "notes": r.get("notes") or "",
+        "price": r.get("price") or "", "cost": r.get("cost") or "", "tip": r.get("tip") or "",
         "eta": r.get("eta") or "", "statusTimes": times,
         "submittedAt": r["submitted_at"],
     }
+
+
+def get_blocked_dates():
+    try:
+        return json.loads(cfg_get("blocked_dates") or "[]")
+    except (ValueError, TypeError):
+        return []
 
 
 # ──────────────────────── Auth ────────────────────────
@@ -323,10 +330,11 @@ def get_availability():
 
 @app.get("/api/settings")
 def get_settings():
-    """Public-safe — business name + busy flag. Never returns the password."""
+    """Public-safe — business name, busy flag, and blocked dates. Never the password."""
     return jsonify({
         "bizName": cfg_get("business_name"),
         "busy": (cfg_get("busy") or "false") == "true",
+        "blockedDates": get_blocked_dates(),
     })
 
 
@@ -353,7 +361,7 @@ def list_requests():
 @app.patch("/api/requests/<int:req_id>")
 @require_auth
 def update_request(req_id):
-    """Update any of: status, notes, price, eta. Send only what you want changed.
+    """Update any of: status, notes, price, cost, tip, eta. Send only what you want changed.
        Changing status also records a timestamp for that status."""
     d = request.get_json(force=True, silent=True) or {}
 
@@ -370,12 +378,9 @@ def update_request(req_id):
             return jsonify({"error": "Invalid status"}), 400
         fields.append("status = %s"); values.append(d["status"])
         fields.append("status_times = %s"); values.append(stamp_status(row.get("status_times"), d["status"]))
-    if "notes" in d:
-        fields.append("notes = %s"); values.append(str(d.get("notes", "")))
-    if "price" in d:
-        fields.append("price = %s"); values.append(str(d.get("price", "")))
-    if "eta" in d:
-        fields.append("eta = %s"); values.append(str(d.get("eta", "")))
+    for col in ("notes", "price", "cost", "tip", "eta"):
+        if col in d:
+            fields.append(f"{col} = %s"); values.append(str(d.get(col, "")))
     if not fields:
         return jsonify({"error": "Nothing to update"}), 400
 
@@ -419,6 +424,17 @@ def update_busy():
     d = request.get_json(force=True, silent=True) or {}
     cfg_set("busy", "true" if d.get("busy") else "false")
     return jsonify({"busy": (cfg_get("busy") or "false") == "true"})
+
+
+@app.put("/api/settings/blocked-dates")
+@require_auth
+def update_blocked_dates():
+    """Set the list of days the mechanic is off (vacation mode). Expects {"dates": ["YYYY-MM-DD", ...]}."""
+    d = request.get_json(force=True, silent=True) or {}
+    raw = d.get("dates", [])
+    clean = sorted({s for s in raw if isinstance(s, str) and re.match(r"^\d{4}-\d{2}-\d{2}$", s)})
+    cfg_set("blocked_dates", json.dumps(clean))
+    return jsonify({"blockedDates": clean})
 
 
 @app.post("/api/change-password")
