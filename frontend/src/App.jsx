@@ -2,10 +2,9 @@
   AMS — Mobile Mechanic & Towing  ::  Frontend (App.jsx)
   Talks to the Flask + PostgreSQL backend. Data syncs across all devices.
 
-  Features: tap-to-call, tap-to-navigate, track-by-phone lookup, EN/ES toggle,
-  job notes, earnings + analytics, dashboard search, busy mode, new-request
-  alert (sound + browser notification), customer cancel, ETA, status timestamps,
-  returning-customer prefill, CSV export, repeat-customer flag, reactivate, honeypot.
+  This version adds: customer history, printable receipts, a 7-day week view,
+  expense + tip tracking with profit analytics, and time-off / vacation mode —
+  on top of everything before it.
 
   SETUP REMINDER
     • This is src/App.jsx in your Vite React project.
@@ -20,7 +19,6 @@ const API_BASE =
   (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_API_URL) ||
   "http://localhost:5000";
 
-// ─── Instagram link ──────────────────────────────────────────
 const INSTAGRAM_URL = "https://www.instagram.com/1low_nelson/";
 
 // ─── Local storage helpers ────────────────────────────────────
@@ -70,6 +68,7 @@ const STR = {
     heroDesc:"Fast, friendly towing and mobile mechanic with over 10 years of hands-on car experience. Request service in under a minute and track your help in real time.",
     fastResponse:"Fast Response", bilingual:"Bilingual", friendlyService:"Friendly Service",
     busyBanner:"We're extra busy right now — leave your details and we'll call you back as soon as we can.",
+    awayBanner:"We're currently away and will respond as soon as we're back. You're welcome to leave your details.",
     afterHours:"We may be outside normal business hours right now — you can still submit and we'll reach out as soon as we can.",
     requestService:"Request Service", requestCallback:"Request a Callback",
     formSubtitle:"Tell us where you are and what you need",
@@ -83,6 +82,7 @@ const STR = {
     scheduledTime:"Scheduled Date & Time", submitRequest:"Submit Request", submitting:"Submitting…",
     infoNote:"Your info is only used to dispatch help",
     fillRequired:"Please fill in all required fields.", pickTime:"Please select a scheduled time.",
+    dateUnavailable:"We're off on that date — please choose another day.",
     submitError:"Couldn't submit — please check your connection and try again.",
     trackExisting:"Already requested help? Track it here",
     prefillNote:"We filled in your details from last time — update anything that changed.", clear:"Clear",
@@ -111,6 +111,7 @@ const STR = {
     heroDesc:"Grúa y mecánico móvil rápido y amable con más de 10 años de experiencia práctica con autos. Solicita servicio en menos de un minuto y sigue tu ayuda en tiempo real.",
     fastResponse:"Respuesta Rápida", bilingual:"Bilingüe", friendlyService:"Servicio Amable",
     busyBanner:"Estamos muy ocupados ahora mismo — déjanos tus datos y te llamamos lo antes posible.",
+    awayBanner:"Estamos ausentes en este momento y responderemos en cuanto regresemos. Puedes dejarnos tus datos.",
     afterHours:"Puede que estemos fuera del horario habitual ahora mismo — aún puedes enviar tu solicitud y te contactaremos lo antes posible.",
     requestService:"Solicitar Servicio", requestCallback:"Solicitar una Llamada",
     formSubtitle:"Dinos dónde estás y qué necesitas",
@@ -124,6 +125,7 @@ const STR = {
     scheduledTime:"Fecha y Hora Programada", submitRequest:"Enviar Solicitud", submitting:"Enviando…",
     infoNote:"Tu información solo se usa para enviarte ayuda",
     fillRequired:"Por favor completa todos los campos requeridos.", pickTime:"Por favor selecciona una fecha y hora.",
+    dateUnavailable:"No estamos disponibles esa fecha — por favor elige otro día.",
     submitError:"No se pudo enviar — revisa tu conexión e inténtalo de nuevo.",
     trackExisting:"¿Ya pediste ayuda? Sigue tu solicitud aquí",
     prefillNote:"Completamos tus datos de la última vez — actualiza lo que haya cambiado.", clear:"Borrar",
@@ -169,17 +171,15 @@ const injectResources = () => {
     s.textContent = `
       * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
       html, body, #root { margin: 0; padding: 0; overflow-x: hidden; background: #0e3f63; }
-      /* Neutralize Vite's default index.css / App.css so the app fills the full viewport width */
       body { display: block; min-width: 0; }
       #root { width: 100%; max-width: none; }
       input, textarea, button { font-family: 'Work Sans', system-ui, sans-serif; }
-      input[type="time"], input[type="datetime-local"] { color-scheme: light; }
+      input[type="time"], input[type="datetime-local"], input[type="date"] { color-scheme: light; }
       input:focus, textarea:focus { border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.18) !important; }
-      /* Hidden scrollbar so the header + content reach the right edge with no gap (page still scrolls) */
       html { scrollbar-width: none; -ms-overflow-style: none; }
       ::-webkit-scrollbar { width: 0; height: 0; display: none; }
+      .ams-scroll { overflow-y: auto; }
 
-      /* Animated aurora background (pure CSS) */
       .ams-aurora {
         background:
           radial-gradient(45% 45% at 18% 22%, rgba(56,189,248,0.55), transparent 62%),
@@ -228,9 +228,58 @@ const heroPill = {
 // ─── Helpers ──────────────────────────────────────────────────
 const formatPrice = (p) => { const n = String(p||"").replace(/[^0-9.]/g,""); return n ? "$"+n : ""; };
 const priceNum   = (p) => parseFloat(String(p||"").replace(/[^0-9.]/g,"")) || 0;
+const money      = (n) => "$"+Number(n||0).toFixed(2).replace(/\.00$/,"");
 const mapsDir    = (loc) => "https://www.google.com/maps/dir/?api=1&destination=" + encodeURIComponent(loc || "");
 const fmtTime    = (iso) => { try { return new Date(iso).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}); } catch { return ""; } };
 const doneDate   = (r) => (r.statusTimes && r.statusTimes.done) ? new Date(r.statusTimes.done) : new Date(r.submittedAt);
+const ymd        = (d) => { const x=new Date(d); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`; };
+const net        = (r) => priceNum(r.price) + priceNum(r.tip) - priceNum(r.cost);
+const escapeHtml = (s) => String(s==null?"":s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+
+// Open a clean, printable receipt in a new window (browser print dialog → save as PDF).
+const printReceipt = (req, bizName) => {
+  const dateStr = new Date((req.statusTimes && req.statusTimes.done) || req.submittedAt).toLocaleString();
+  const svc = priceNum(req.price), tip = priceNum(req.tip), total = svc + tip;
+  const line = (label, val) => `<tr><td>${escapeHtml(label)}</td><td style="text-align:right">${money(val)}</td></tr>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Receipt #${req.id} — ${escapeHtml(bizName)}</title>
+    <style>
+      *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#152840;max-width:520px;margin:24px auto;padding:0 20px}
+      .h{text-align:center;border-bottom:2px solid #2563eb;padding-bottom:14px;margin-bottom:18px}
+      .h .b{font-size:1.6rem;font-weight:800;letter-spacing:.04em;color:#2563eb}
+      .h .s{font-size:.8rem;color:#5f7691;text-transform:uppercase;letter-spacing:.1em;margin-top:2px}
+      .tag{display:inline-block;margin-top:10px;font-size:.85rem;font-weight:700;letter-spacing:.18em;color:#5f7691}
+      .row{display:flex;justify-content:space-between;font-size:.86rem;margin:4px 0;color:#5f7691}
+      .row b{color:#152840;font-weight:600}
+      table{width:100%;border-collapse:collapse;margin-top:16px;font-size:.92rem}
+      td{padding:8px 0;border-bottom:1px solid #e7eef8}
+      .total td{border-top:2px solid #152840;border-bottom:none;font-weight:800;font-size:1.05rem;padding-top:10px}
+      .f{text-align:center;color:#5f7691;font-size:.82rem;margin-top:24px}
+      @media print{body{margin:0}}
+    </style></head><body>
+    <div class="h"><div class="b">${escapeHtml(bizName||"AMS")}</div><div class="s">Mobile Mechanic &amp; Towing</div><div class="tag">RECEIPT</div></div>
+    <div class="row"><span>Receipt #</span><b>${req.id}</b></div>
+    <div class="row"><span>Date</span><b>${escapeHtml(dateStr)}</b></div>
+    <div class="row"><span>Customer</span><b>${escapeHtml(req.name)}</b></div>
+    <div class="row"><span>Phone</span><b>${escapeHtml(req.phone)}</b></div>
+    <div class="row"><span>Vehicle</span><b>${escapeHtml(`${req.year} ${req.make} ${req.model}`)}</b></div>
+    <div class="row"><span>Service</span><b>${escapeHtml(req.svc)}</b></div>
+    ${req.issue ? `<div class="row"><span>Notes</span><b>${escapeHtml(req.issue)}</b></div>` : ""}
+    <table>
+      ${line(req.svc + " service", svc)}
+      ${tip>0 ? line("Tip", tip) : ""}
+      <tr class="total"><td>Total</td><td style="text-align:right">${money(total)}</td></tr>
+    </table>
+    <div class="f">Thank you for your business!</div>
+    <script>window.onload=function(){setTimeout(function(){window.print();},300);};<\/script>
+    </body></html>`;
+  let w = null;
+  try { w = window.open("", "_blank"); } catch { w = null; }
+  if (w) { w.document.open(); w.document.write(html); w.document.close(); }
+  else {
+    const blob = new Blob([html], { type:"text/html" });
+    window.open(URL.createObjectURL(blob), "_blank");
+  }
+};
 
 // ─── SVG Icons ────────────────────────────────────────────────
 const P = {
@@ -260,6 +309,8 @@ const P = {
   edit:"M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z",
   bell:"M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9 M13.73 21a2 2 0 0 1-3.46 0",
   download:"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3",
+  receipt:"M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1z M8 7h8 M8 11h8 M8 15h5",
+  close:"M18 6L6 18 M6 6l12 12",
 };
 const Ico = ({d,size=16,color="currentColor",style={}}) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,...style}}>
@@ -347,7 +398,6 @@ const MapEmbed = ({ location }) => {
   );
 };
 
-// ─── Language toggle (EN / ES) ────────────────────────────────
 const LangToggle = ({ m }) => {
   const { lang, setLang } = useLang();
   return (
@@ -359,7 +409,6 @@ const LangToggle = ({ m }) => {
   );
 };
 
-// ─── Nav ──────────────────────────────────────────────────────
 const Nav = ({ bizName, isMech, onMechClick }) => {
   const m = useMobile();
   const { t } = useLang();
@@ -388,7 +437,6 @@ const Nav = ({ bizName, isMech, onMechClick }) => {
   );
 };
 
-// ─── Hero ─────────────────────────────────────────────────────
 const Hero = () => {
   const m = useMobile();
   const { t } = useLang();
@@ -415,7 +463,7 @@ const Hero = () => {
 };
 
 // ─── Customer Form ────────────────────────────────────────────
-const CustomerForm = ({ onSubmit, availability, busy, onTrack }) => {
+const CustomerForm = ({ onSubmit, availability, busy, onTrack, blockedDates }) => {
   const m = useMobile();
   const { t } = useLang();
   const saved = useRef(getSavedCustomer()).current;
@@ -426,6 +474,9 @@ const CustomerForm = ({ onSubmit, availability, busy, onTrack }) => {
   const [mapLoc,setMapLoc] = useState("");
   const [submitting,setSubmitting] = useState(false);
   const set = (k,v) => setF(p=>({...p,[k]:v}));
+  const blocked = blockedDates || [];
+  const todayBlocked = blocked.includes(ymd(new Date()));
+  const schedBlocked = f.schedTime && blocked.includes(f.schedTime.slice(0,10));
 
   useEffect(()=>{
     const now=new Date();
@@ -443,6 +494,7 @@ const CustomerForm = ({ onSubmit, availability, busy, onTrack }) => {
   const submit = async () => {
     for(const k of ["name","phone","loc","year","make","model","issue"]) if(!f[k].trim()){setErr(t("fillRequired"));return;}
     if(f.urg==="Scheduled"&&!f.schedTime){setErr(t("pickTime"));return;}
+    if(schedBlocked){ setErr(t("dateUnavailable")); return; }
     setErr(""); setSubmitting(true);
     try { await onSubmit({...f}); saveCustomer({ name:f.name, phone:f.phone, year:f.year, make:f.make, model:f.model }); }
     catch (e) { setErr(e.message || t("submitError")); }
@@ -462,7 +514,11 @@ const CustomerForm = ({ onSubmit, availability, busy, onTrack }) => {
           </button>
         </div>
 
-        {busy ? (
+        {todayBlocked ? (
+          <div style={{ background:"rgba(255,251,235,0.96)", borderRadius:12, padding:"12px 14px", marginBottom:16, color:C.amberD, fontSize:"0.85rem", display:"flex", gap:8, alignItems:"flex-start", border:`1px solid ${C.amber}66`, boxShadow:"0 8px 24px rgba(8,28,52,0.18)", fontWeight:600 }}>
+            <Ico d={P.cal} size={16} color={C.amber} style={{marginTop:1,flexShrink:0}}/>{t("awayBanner")}
+          </div>
+        ) : busy ? (
           <div style={{ background:"rgba(255,251,235,0.96)", borderRadius:12, padding:"12px 14px", marginBottom:16, color:C.amberD, fontSize:"0.85rem", display:"flex", gap:8, alignItems:"flex-start", border:`1px solid ${C.amber}66`, boxShadow:"0 8px 24px rgba(8,28,52,0.18)", fontWeight:600 }}>
             <Ico d={P.clock} size={16} color={C.amber} style={{marginTop:1,flexShrink:0}}/>{t("busyBanner")}
           </div>
@@ -488,7 +544,6 @@ const CustomerForm = ({ onSubmit, availability, busy, onTrack }) => {
             </div>
           )}
 
-          {/* Honeypot — hidden from real users; bots that fill it are rejected by the server */}
           <input type="text" name="company" tabIndex={-1} autoComplete="off" aria-hidden="true" value={f.company} onChange={e=>set("company",e.target.value)} style={{ position:"absolute", left:"-9999px", width:1, height:1, opacity:0 }}/>
 
           <Inp label={t("yourName")} icon="user" placeholder={t("fullName")} value={f.name} onChange={e=>set("name",e.target.value)}/>
@@ -522,6 +577,7 @@ const CustomerForm = ({ onSubmit, availability, busy, onTrack }) => {
               {f.urg==="Scheduled"&&<Inp label={t("scheduledTime")} icon="cal" type="datetime-local" value={f.schedTime} onChange={e=>set("schedTime",e.target.value)}/>}
             </>
           )}
+          {schedBlocked && <div style={{ color:C.red, fontSize:"0.78rem", marginBottom:12, marginTop:-4, display:"flex", gap:6, alignItems:"center", fontWeight:600 }}><Ico d={P.alert} size={12} color={C.red}/>{t("dateUnavailable")}</div>}
           <ErrorBar msg={err} onClose={()=>setErr("")}/>
           <Btn full onClick={submit} icon="zap" disabled={submitting}>{btnLabel}</Btn>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginTop:12, color:C.text3, fontSize:"0.74rem" }}>
@@ -638,19 +694,16 @@ const TrackingBody = ({ req, phone, onUpdate }) => (
   </>
 );
 
-// ─── Confirmation (polls backend for live status) ─────────────
 const Confirmation = ({ initialReq, onNew, callback }) => {
   const m = useMobile();
   const { t } = useLang();
   const [req,setReq] = useState(initialReq);
-
   useEffect(()=>{
     let alive = true;
     const tick = async () => { try { const fresh = await api("/api/requests/"+initialReq.id); if(alive) setReq(fresh); } catch {} };
     const iv = setInterval(tick, 4000);
     return () => { alive = false; clearInterval(iv); };
   },[initialReq.id]);
-
   return (
     <div style={{ padding:m?"22px 12px":"28px 16px", maxWidth:600, margin:"0 auto" }}>
       <div style={{ textAlign:"center", marginBottom:24 }}>
@@ -664,7 +717,6 @@ const Confirmation = ({ initialReq, onNew, callback }) => {
   );
 };
 
-// ─── Track-by-phone Lookup ────────────────────────────────────
 const Lookup = ({ onBack }) => {
   const m = useMobile();
   const { t } = useLang();
@@ -673,7 +725,6 @@ const Lookup = ({ onBack }) => {
   const [err,setErr] = useState("");
   const [busy,setBusy] = useState(false);
   const [live,setLive] = useState(null);
-
   const latest = results && results.length ? results[0] : null;
 
   useEffect(()=>{
@@ -692,7 +743,6 @@ const Lookup = ({ onBack }) => {
     catch (e) { setErr(e.message || t("cancelError")); }
     finally { setBusy(false); }
   };
-
   const shown = live || latest;
 
   if (shown) {
@@ -727,7 +777,6 @@ const Lookup = ({ onBack }) => {
   );
 };
 
-// ─── Login ────────────────────────────────────────────────────
 const Login = ({ onLogin, onBack }) => {
   const m = useMobile();
   const { t } = useLang();
@@ -756,12 +805,58 @@ const Login = ({ onLogin, onBack }) => {
   );
 };
 
+// ─── Customer history modal (mechanic) ────────────────────────
+const HistoryModal = ({ phone, name, requests, onClose }) => {
+  const m = useMobile();
+  const digits = (phone||"").replace(/\D/g,"");
+  const jobs = requests.filter(r=>r.phone.replace(/\D/g,"")===digits).sort((a,b)=>new Date(b.submittedAt)-new Date(a.submittedAt));
+  const spent = jobs.filter(r=>r.status==="done").reduce((s,r)=>s+priceNum(r.price)+priceNum(r.tip),0);
+  const doneCount = jobs.filter(r=>r.status==="done").length;
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:200, background:"rgba(8,20,38,0.55)", backdropFilter:"blur(3px)", display:"flex", alignItems:m?"flex-end":"center", justifyContent:"center", padding:m?0:20 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ ...card(), borderRadius:m?"16px 16px 0 0":16, width:"100%", maxWidth:520, maxHeight:m?"85vh":"82vh", display:"flex", flexDirection:"column", overflow:"hidden" }}>
+        <div style={{ padding:"16px 18px", borderBottom:`1px solid ${C.border}`, display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
+          <div style={{ minWidth:0 }}>
+            <div style={{ color:C.text, fontWeight:800, fontSize:"1.05rem", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{name}</div>
+            <div style={{ color:C.text2, fontSize:"0.78rem", marginTop:2 }}>{jobs.length} request{jobs.length===1?"":"s"} · {doneCount} completed · {money(spent)} total</div>
+          </div>
+          <button onClick={onClose} style={{ background:C.surface2, border:`1px solid ${C.border}`, borderRadius:8, padding:6, cursor:"pointer", flexShrink:0, display:"flex" }}><Ico d={P.close} size={16} color={C.text2}/></button>
+        </div>
+        <div className="ams-scroll" style={{ padding:"12px 18px 18px", overflowY:"auto" }}>
+          {jobs.map(r=>{
+            const meta = SM[r.status] || SM.pending;
+            return (
+              <div key={r.id} style={{ borderBottom:`1px solid ${C.surface3}`, padding:"11px 0", display:"flex", justifyContent:"space-between", gap:10, alignItems:"flex-start" }}>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:3, flexWrap:"wrap" }}>
+                    <Ico d={P[r.svc==="Towing"?"tow":"wrench"]} size={13} color={r.svc==="Towing"?C.blue:C.sky}/>
+                    <span style={{ color:C.text, fontWeight:700, fontSize:"0.85rem" }}>{r.svc}</span>
+                    <span style={{ color:C.text3, fontSize:"0.78rem" }}>· {r.year} {r.make} {r.model}</span>
+                  </div>
+                  <div style={{ color:C.text3, fontSize:"0.74rem" }}>{new Date(r.submittedAt).toLocaleDateString([], {year:"numeric",month:"short",day:"numeric"})}</div>
+                  {r.issue && <div style={{ color:C.text2, fontSize:"0.78rem", fontStyle:"italic", marginTop:3, wordBreak:"break-word" }}>"{r.issue}"</div>}
+                </div>
+                <div style={{ textAlign:"right", flexShrink:0 }}>
+                  <Badge status={r.status}/>
+                  {formatPrice(r.price) && <div style={{ color:C.green, fontWeight:800, fontSize:"0.85rem", marginTop:6 }}>{formatPrice(r.price)}</div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Request Card (mechanic dashboard) ────────────────────────
-const ReqCard = ({ req, onPatch, busyId, repeat }) => {
+const ReqCard = ({ req, onPatch, busyId, repeat, onHistory }) => {
   const [showMap,setShowMap]=useState(false);
   const [showAdmin,setShowAdmin]=useState(false);
   const [noteDraft,setNoteDraft]=useState(req.notes||"");
   const [priceDraft,setPriceDraft]=useState(req.price||"");
+  const [tipDraft,setTipDraft]=useState(req.tip||"");
+  const [costDraft,setCostDraft]=useState(req.cost||"");
   const [savingAdmin,setSavingAdmin]=useState(false);
   const [etaOpen,setEtaOpen]=useState(false);
   const [etaDraft,setEtaDraft]=useState(req.eta||"");
@@ -771,14 +866,26 @@ const ReqCard = ({ req, onPatch, busyId, repeat }) => {
   const svcCol = req.svc==="Towing" ? C.blue : C.sky;
   const busy = busyId === req.id;
   const priceText = formatPrice(req.price);
+  const showReceipt = priceNum(req.price)>0 || req.status==="done";
+  const profitPreview = priceNum(priceDraft)+priceNum(tipDraft)-priceNum(costDraft);
 
   const saveAdmin = async () => {
     setSavingAdmin(true);
-    try { await onPatch(req.id, { notes:noteDraft, price:priceDraft.replace(/[^0-9.]/g,"") }); setShowAdmin(false); }
+    try { await onPatch(req.id, { notes:noteDraft, price:priceDraft.replace(/[^0-9.]/g,""), tip:tipDraft.replace(/[^0-9.]/g,""), cost:costDraft.replace(/[^0-9.]/g,"") }); setShowAdmin(false); }
     catch {} finally { setSavingAdmin(false); }
   };
   const startOnway = async () => { setEtaBusy(true); try { await onPatch(req.id, { status:"onway", eta:etaDraft }); setEtaOpen(false); } catch {} finally { setEtaBusy(false); } };
   const saveEta    = async () => { setEtaBusy(true); try { await onPatch(req.id, { eta:etaDraft }); setEtaOpen(false); } catch {} finally { setEtaBusy(false); } };
+
+  const moneyInput = (label, val, setVal, hint) => (
+    <div style={{ flex:1, minWidth:90 }}>
+      <Lbl style={{ marginBottom:5 }}>{label}</Lbl>
+      <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+        <span style={{ color:C.text2, fontWeight:800, fontSize:"0.95rem" }}>$</span>
+        <input value={val} onChange={e=>setVal(e.target.value)} placeholder="0" inputMode="decimal" style={{ ...fieldStyle, padding:"9px 10px" }}/>
+      </div>
+    </div>
+  );
 
   return (
     <Card accent={active}>
@@ -788,7 +895,7 @@ const ReqCard = ({ req, onPatch, busyId, repeat }) => {
           <div style={{ minWidth:0 }}>
             <div style={{ display:"flex", alignItems:"center", gap:6, minWidth:0 }}>
               <div style={{ color:C.text, fontWeight:800, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{req.name}</div>
-              {repeat>1 && <span style={{ background:`${C.amber}1f`, color:C.amberD, border:`1px solid ${C.amber}55`, borderRadius:5, padding:"1px 6px", fontSize:"0.6rem", fontWeight:800, whiteSpace:"nowrap", flexShrink:0 }}>★ x{repeat}</span>}
+              {repeat>1 && <button onClick={()=>onHistory(req.phone, req.name)} style={{ background:`${C.amber}1f`, color:C.amberD, border:`1px solid ${C.amber}55`, borderRadius:5, padding:"1px 6px", fontSize:"0.6rem", fontWeight:800, whiteSpace:"nowrap", flexShrink:0, cursor:"pointer" }}>★ x{repeat}</button>}
             </div>
             <div style={{ color:svcCol, fontSize:"0.68rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em" }}>{req.svc}</div>
           </div>
@@ -817,18 +924,20 @@ const ReqCard = ({ req, onPatch, busyId, repeat }) => {
 
       <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom: showAdmin?12:8 }}>
         <Btn small outline href={mapsDir(req.loc)} target="_blank" icon="nav">Directions</Btn>
-        <Btn small outline color={C.text2} onClick={()=>setShowAdmin(v=>!v)} icon="edit">Notes / Price</Btn>
+        <Btn small outline color={C.text2} onClick={()=>setShowAdmin(v=>!v)} icon="edit">Notes / Money</Btn>
+        {showReceipt && <Btn small outline color={C.blue} onClick={()=>printReceipt(req, "AMS")} icon="receipt">Receipt</Btn>}
       </div>
 
       {showAdmin && (
         <div style={{ background:C.surface2, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px", marginBottom:12 }}>
-          <Lbl>Price</Lbl>
-          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:12 }}>
-            <span style={{ color:C.text2, fontWeight:800, fontSize:"1rem" }}>$</span>
-            <input value={priceDraft} onChange={e=>setPriceDraft(e.target.value)} placeholder="0" inputMode="decimal" style={{ ...fieldStyle, padding:"9px 11px" }}/>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:10 }}>
+            {moneyInput("Price", priceDraft, setPriceDraft)}
+            {moneyInput("Tip", tipDraft, setTipDraft)}
+            {moneyInput("Cost", costDraft, setCostDraft)}
           </div>
+          <div style={{ fontSize:"0.78rem", color:C.text2, marginBottom:10, fontWeight:600 }}>Profit: <span style={{ color: profitPreview<0?C.red:C.green, fontWeight:800 }}>{profitPreview<0?"-":""}{money(Math.abs(profitPreview))}</span> <span style={{ color:C.text3, fontWeight:500 }}>(price + tip − cost)</span></div>
           <Lbl>Private Notes</Lbl>
-          <textarea value={noteDraft} onChange={e=>setNoteDraft(e.target.value)} placeholder="Parts needed, gate code, follow-up…" style={{ ...fieldStyle, resize:"vertical", minHeight:64, marginBottom:8 }}/>
+          <textarea value={noteDraft} onChange={e=>setNoteDraft(e.target.value)} placeholder="Parts needed, gate code, follow-up…" style={{ ...fieldStyle, resize:"vertical", minHeight:60, marginBottom:8 }}/>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, flexWrap:"wrap" }}>
             <span style={{ color:C.text3, fontSize:"0.7rem", display:"flex", alignItems:"center", gap:5 }}><Ico d={P.lock} size={11} color={C.text3}/>Mechanic only — customers never see this</span>
             <Btn small onClick={saveAdmin} icon="check" disabled={savingAdmin}>{savingAdmin?"Saving…":"Save"}</Btn>
@@ -873,7 +982,7 @@ const ReqCard = ({ req, onPatch, busyId, repeat }) => {
 };
 
 // ─── Dashboard ────────────────────────────────────────────────
-const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangePassword, onLogout, busy, onBusy }) => {
+const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangePassword, onLogout, busy, onBusy, blockedDates, onBlockedDates }) => {
   const m = useMobile();
   const [tab,setTab]=useState("queue");
   const [requests,setRequests]=useState([]);
@@ -882,6 +991,9 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
   const [busyId,setBusyId]=useState(null);
   const [query,setQuery]=useState("");
   const [alertsOn,setAlertsOn]=useState(getAlerts);
+  const [schedView,setSchedView]=useState("today");
+  const [history,setHistory]=useState(null);
+  const [dateDraft,setDateDraft]=useState("");
 
   const [newBiz,setNewBiz]=useState(bizName);
   const [curPw,setCurPw]=useState(""); const [newPw,setNewPw]=useState(""); const [confPw,setConfPw]=useState("");
@@ -916,13 +1028,8 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
     finally { setLoading(false); }
   }, [authApi]);
 
-  useEffect(()=>{
-    loadRequests();
-    const iv = setInterval(loadRequests, 8000);
-    return () => clearInterval(iv);
-  },[loadRequests]);
+  useEffect(()=>{ loadRequests(); const iv = setInterval(loadRequests, 8000); return () => clearInterval(iv); },[loadRequests]);
 
-  // New-request alert: fire when a new pending request appears after the first load.
   useEffect(()=>{
     if(loading) return;
     const ids=requests.map(r=>r.id);
@@ -952,13 +1059,15 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
   const weekStart=new Date(); weekStart.setHours(0,0,0,0); weekStart.setDate(weekStart.getDate()-6);
   const monthStart=new Date(); monthStart.setHours(0,0,0,0); monthStart.setDate(1);
   const done=requests.filter(r=>r.status==="done");
-  const earnToday=done.filter(r=>doneDate(r).toDateString()===todayStr).reduce((s,r)=>s+priceNum(r.price),0);
-  const earnWeek=done.filter(r=>doneDate(r)>=weekStart).reduce((s,r)=>s+priceNum(r.price),0);
+  const earnToday=done.filter(r=>doneDate(r).toDateString()===todayStr).reduce((s,r)=>s+net(r),0);
+  const earnWeek=done.filter(r=>doneDate(r)>=weekStart).reduce((s,r)=>s+net(r),0);
   const monthJobs=done.filter(r=>doneDate(r)>=monthStart);
-  const earnMonth=monthJobs.reduce((s,r)=>s+priceNum(r.price),0);
+  const grossMonth=monthJobs.reduce((s,r)=>s+priceNum(r.price),0);
+  const tipsMonth=monthJobs.reduce((s,r)=>s+priceNum(r.tip),0);
+  const costsMonth=monthJobs.reduce((s,r)=>s+priceNum(r.cost),0);
+  const netMonth=grossMonth+tipsMonth-costsMonth;
   const towMonth=monthJobs.filter(r=>r.svc==="Towing").reduce((s,r)=>s+priceNum(r.price),0);
   const mechMonth=monthJobs.filter(r=>r.svc==="Mechanical").reduce((s,r)=>s+priceNum(r.price),0);
-  const money=(n)=>"$"+n.toFixed(2).replace(/\.00$/,"");
 
   const phoneCounts={};
   requests.forEach(r=>{ const k=r.phone.replace(/\D/g,""); if(k) phoneCounts[k]=(phoneCounts[k]||0)+1; });
@@ -975,10 +1084,18 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
   const todayJobs=requests.filter(r=>["accepted","onway","done"].includes(r.status)&&new Date(r.submittedAt).toDateString()===todayStr)
     .sort((a,b)=>(a.urg==="Scheduled"?new Date(a.schedTime):new Date(a.submittedAt))-(b.urg==="Scheduled"?new Date(b.schedTime):new Date(b.submittedAt)));
 
+  // Week view
+  const today0=new Date(); today0.setHours(0,0,0,0);
+  const weekDays=Array.from({length:7},(_,i)=>{ const d=new Date(today0); d.setDate(d.getDate()+i); return d; });
+  const effDate=(r)=> r.urg==="Scheduled"&&r.schedTime ? new Date(r.schedTime) : new Date(r.submittedAt);
+  const sameYmd=(a,b)=>ymd(a)===ymd(b);
+  const jobsForDay=(day)=>requests.filter(r=>!["dismissed","cancelled"].includes(r.status) && sameYmd(effDate(r),day))
+    .sort((a,b)=>effDate(a)-effDate(b));
+
   const exportCSV = () => {
-    const cols=["id","submitted","status","name","phone","service","urgency","vehicle","location","issue","price","eta","accepted_at","onway_at","done_at","notes"];
+    const cols=["id","submitted","status","name","phone","service","urgency","vehicle","location","issue","price","tip","cost","eta","accepted_at","onway_at","done_at","notes"];
     const esc=(v)=>{ const s=String(v==null?"":v); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; };
-    const rows=requests.map(r=>{ const st=r.statusTimes||{}; return [r.id,r.submittedAt,r.status,r.name,r.phone,r.svc,r.urg,`${r.year} ${r.make} ${r.model}`,r.loc,r.issue,r.price,r.eta,st.accepted||"",st.onway||"",st.done||"",r.notes].map(esc).join(","); });
+    const rows=requests.map(r=>{ const st=r.statusTimes||{}; return [r.id,r.submittedAt,r.status,r.name,r.phone,r.svc,r.urg,`${r.year} ${r.make} ${r.model}`,r.loc,r.issue,r.price,r.tip,r.cost,r.eta,st.accepted||"",st.onway||"",st.done||"",r.notes].map(esc).join(","); });
     const csv=[cols.join(","),...rows].join("\n");
     const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
     const url=URL.createObjectURL(blob);
@@ -999,13 +1116,17 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
 
   const toggleDay = (day) => { const next={...availability,[day]:{...availability[day],on:!availability[day].on}}; onAvailability(next); };
   const setTime = (day,field,val) => { const next={...availability,[day]:{...availability[day],[field]:val}}; onAvailability(next); };
+  const addBlocked = () => { if(dateDraft && !(blockedDates||[]).includes(dateDraft)){ onBlockedDates([...(blockedDates||[]), dateDraft]); } setDateDraft(""); };
+  const removeBlocked = (d) => onBlockedDates((blockedDates||[]).filter(x=>x!==d));
 
   const TABS=[{id:"queue",label:"Queue",icon:"list"},{id:"schedule",label:"Schedule",icon:"cal"},{id:"avail",label:"Hours",icon:"clock"},{id:"settings",label:"Settings",icon:"cog"}];
   const STATS=[[pending,"Pending",C.amber,"alert"],[active,"Active",C.blue,"zap"],[doneToday,"Done Today",C.green,"check"],[allDone,"All-Time",C.sky,"list"]];
   const av = availability || DEFAULT_AVAIL;
+  const sortedBlocked=[...(blockedDates||[])].sort();
 
   return (
     <div style={{ maxWidth:700, margin:"0 auto" }}>
+      {history && <HistoryModal phone={history.phone} name={history.name} requests={requests} onClose={()=>setHistory(null)}/>}
       <div style={{ display:"flex", gap:m?4:6, padding:m?"12px 10px":"14px", borderBottom:"1px solid rgba(255,255,255,0.18)" }}>
         {TABS.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, minWidth:0, padding:m?"9px 2px":"9px 4px", borderRadius:10, border:`1px solid ${tab===t.id?C.blue:"rgba(255,255,255,0.4)"}`, cursor:"pointer", background:tab===t.id?C.blue:"rgba(255,255,255,0.92)", color:tab===t.id?"#fff":C.text2, fontWeight:700, fontSize:m?"0.58rem":"0.7rem", letterSpacing:"0.03em", textTransform:"uppercase", display:"flex", alignItems:"center", justifyContent:"center", gap:m?3:6, transition:"all .15s", boxShadow:tab===t.id?`0 4px 12px ${C.blue}40`:"0 2px 10px rgba(8,28,52,0.12)" }}>
@@ -1037,13 +1158,18 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
           </div>
           <div style={{ ...card(), borderRadius:14, padding:"15px 16px", marginBottom:10, borderTop:`4px solid ${C.blue}` }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline" }}>
-              <div style={{ color:C.text2, fontSize:"0.68rem", textTransform:"uppercase", letterSpacing:"0.07em", fontWeight:700 }}>This Month</div>
-              <div style={{ color:C.blue, fontWeight:900, fontSize:"1.5rem" }}>{money(earnMonth)}</div>
+              <div style={{ color:C.text2, fontSize:"0.68rem", textTransform:"uppercase", letterSpacing:"0.07em", fontWeight:700 }}>This Month · take-home</div>
+              <div style={{ color:C.blue, fontWeight:900, fontSize:"1.5rem" }}>{money(netMonth)}</div>
             </div>
             <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginTop:8, color:C.text2, fontSize:"0.75rem", fontWeight:600 }}>
+              <span>Service {money(grossMonth)}</span>
+              <span style={{ color:C.green }}>Tips {money(tipsMonth)}</span>
+              <span style={{ color:C.red }}>Costs −{money(costsMonth)}</span>
+            </div>
+            <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginTop:6, color:C.text3, fontSize:"0.72rem", fontWeight:600, borderTop:`1px solid ${C.surface3}`, paddingTop:8 }}>
               <span><Ico d={P.tow} size={11} color={C.blue} style={{verticalAlign:"-1px",marginRight:4}}/>Towing {money(towMonth)}</span>
               <span><Ico d={P.wrench} size={11} color={C.sky} style={{verticalAlign:"-1px",marginRight:4}}/>Mechanical {money(mechMonth)}</span>
-              <span style={{ color:C.text3 }}>{monthJobs.length} job{monthJobs.length===1?"":"s"}</span>
+              <span>{monthJobs.length} job{monthJobs.length===1?"":"s"}</span>
             </div>
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
@@ -1073,30 +1199,62 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
               ? <div style={{ color:ON.t3, textAlign:"center", padding:"56px 0", fontSize:"0.9rem" }}><Ico d={P.list} size={34} color="rgba(255,255,255,0.35)" style={{ display:"block", margin:"0 auto 12px" }}/>No requests yet.</div>
               : visible.length===0
                 ? <div style={{ color:ON.t3, textAlign:"center", padding:"48px 0", fontSize:"0.9rem" }}>No jobs match "{query}".</div>
-                : visible.map(r=><ReqCard key={r.id} req={r} onPatch={patchRequest} busyId={busyId} repeat={phoneCounts[r.phone.replace(/\D/g,"")]||1}/>)
+                : visible.map(r=><ReqCard key={r.id} req={r} onPatch={patchRequest} busyId={busyId} repeat={phoneCounts[r.phone.replace(/\D/g,"")]||1} onHistory={(p,n)=>setHistory({phone:p,name:n})}/>)
           }
         </>}
 
         {tab==="schedule"&&<>
-          <SectionHead icon="cal">Today's Jobs</SectionHead>
-          {todayJobs.length===0
-            ?<div style={{ color:ON.t3, textAlign:"center", padding:"56px 0" }}><Ico d={P.cal} size={34} color="rgba(255,255,255,0.35)" style={{ display:"block", margin:"0 auto 12px" }}/>No jobs scheduled for today.</div>
-            :todayJobs.map(r=>(
-              <Card key={r.id} accent>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:6 }}><Ico d={P.clock} size={13} color={C.amber}/><span style={{ color:C.amberD, fontWeight:700, fontSize:"0.85rem" }}>{r.urg==="Scheduled"&&r.schedTime?new Date(r.schedTime).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"ASAP"}</span></div>
-                  <Badge status={r.status}/>
-                </div>
-                <div style={{ fontWeight:800, color:C.text, marginBottom:4 }}>{r.name} <span style={{ color:r.svc==="Towing"?C.blue:C.sky, fontWeight:600, fontSize:"0.85rem" }}>— {r.svc}</span></div>
-                <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}><Ico d={P.car} size={12} color={C.blue}/><span style={{ color:C.blue, fontSize:"0.82rem", fontWeight:700 }}>{r.year} {r.make} {r.model}</span></div>
-                <div style={{ display:"flex", alignItems:"center", gap:6, justifyContent:"space-between", flexWrap:"wrap" }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:6, minWidth:0 }}><Ico d={P.loc} size={12} color={C.text3}/><span style={{ color:C.text2, fontSize:"0.82rem", wordBreak:"break-word" }}>{r.loc}</span></div>
-                  <Btn small outline href={mapsDir(r.loc)} target="_blank" icon="nav">Directions</Btn>
-                </div>
-                {r.issue&&<div style={{ color:C.text3, fontSize:"0.78rem", fontStyle:"italic", marginTop:6 }}>"{r.issue}"</div>}
-              </Card>
-            ))
-          }
+          <div style={{ display:"flex", gap:8, marginBottom:14, maxWidth:280 }}>
+            {[["today","Today"],["week","This Week"]].map(([id,l])=>(
+              <button key={id} onClick={()=>setSchedView(id)} style={{ flex:1, padding:"9px", borderRadius:9, fontWeight:700, fontSize:"0.72rem", cursor:"pointer", textTransform:"uppercase", letterSpacing:"0.04em", background:schedView===id?C.blue:"rgba(255,255,255,0.92)", color:schedView===id?"#fff":C.text2, border:`1px solid ${schedView===id?C.blue:"rgba(255,255,255,0.5)"}` }}>{l}</button>
+            ))}
+          </div>
+
+          {schedView==="today" ? (
+            todayJobs.length===0
+              ?<div style={{ color:ON.t3, textAlign:"center", padding:"56px 0" }}><Ico d={P.cal} size={34} color="rgba(255,255,255,0.35)" style={{ display:"block", margin:"0 auto 12px" }}/>No jobs scheduled for today.</div>
+              :todayJobs.map(r=>(
+                <Card key={r.id} accent>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6 }}><Ico d={P.clock} size={13} color={C.amber}/><span style={{ color:C.amberD, fontWeight:700, fontSize:"0.85rem" }}>{r.urg==="Scheduled"&&r.schedTime?new Date(r.schedTime).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"ASAP"}</span></div>
+                    <Badge status={r.status}/>
+                  </div>
+                  <div style={{ fontWeight:800, color:C.text, marginBottom:4 }}>{r.name} <span style={{ color:r.svc==="Towing"?C.blue:C.sky, fontWeight:600, fontSize:"0.85rem" }}>— {r.svc}</span></div>
+                  <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}><Ico d={P.car} size={12} color={C.blue}/><span style={{ color:C.blue, fontSize:"0.82rem", fontWeight:700 }}>{r.year} {r.make} {r.model}</span></div>
+                  <div style={{ display:"flex", alignItems:"center", gap:6, justifyContent:"space-between", flexWrap:"wrap" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6, minWidth:0 }}><Ico d={P.loc} size={12} color={C.text3}/><span style={{ color:C.text2, fontSize:"0.82rem", wordBreak:"break-word" }}>{r.loc}</span></div>
+                    <Btn small outline href={mapsDir(r.loc)} target="_blank" icon="nav">Directions</Btn>
+                  </div>
+                  {r.issue&&<div style={{ color:C.text3, fontSize:"0.78rem", fontStyle:"italic", marginTop:6 }}>"{r.issue}"</div>}
+                </Card>
+              ))
+          ) : (
+            weekDays.map((day,i)=>{
+              const dj=jobsForDay(day);
+              const label=i===0?"Today":i===1?"Tomorrow":day.toLocaleDateString([], {weekday:"long"});
+              return (
+                <Card key={i} style={{ borderLeft:`4px solid ${dj.length?C.blue:C.surface3}` }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom: dj.length?8:0 }}>
+                    <div style={{ color:C.text, fontWeight:800, fontSize:"0.9rem" }}>{label}</div>
+                    <div style={{ color:C.text3, fontSize:"0.74rem", fontWeight:600 }}>{day.toLocaleDateString([], {month:"short",day:"numeric"})}</div>
+                  </div>
+                  {dj.length===0
+                    ? <div style={{ color:C.text3, fontSize:"0.78rem", fontStyle:"italic" }}>No jobs</div>
+                    : dj.map((r,idx)=>(
+                        <div key={r.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 0", borderTop: idx? `1px solid ${C.surface3}`:undefined }}>
+                          <span style={{ color:C.amberD, fontWeight:700, fontSize:"0.78rem", minWidth:62, flexShrink:0 }}>{r.urg==="Scheduled"&&r.schedTime?new Date(r.schedTime).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):"ASAP"}</span>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ color:C.text, fontWeight:700, fontSize:"0.82rem", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.name} <span style={{ color:r.svc==="Towing"?C.blue:C.sky, fontWeight:600 }}>· {r.svc}</span></div>
+                            <div style={{ color:C.text3, fontSize:"0.74rem", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.year} {r.make} {r.model}</div>
+                          </div>
+                          <Badge status={r.status}/>
+                        </div>
+                      ))
+                  }
+                </Card>
+              );
+            })
+          )}
         </>}
 
         {tab==="avail"&&<>
@@ -1119,7 +1277,26 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
               </div>
             );
           })}
-          <div style={{ color:ON.t3, fontSize:"0.75rem", marginTop:8, display:"flex", gap:5, alignItems:"center" }}><Ico d={P.check} size={11} color="#86efac"/>Changes save automatically.</div>
+          <div style={{ color:ON.t3, fontSize:"0.75rem", margin:"8px 0 18px", display:"flex", gap:5, alignItems:"center" }}><Ico d={P.check} size={11} color="#86efac"/>Changes save automatically.</div>
+
+          <SectionHead icon="cal">Time Off</SectionHead>
+          <Card>
+            <Lbl icon="cal">Block a day off</Lbl>
+            <div style={{ display:"flex", gap:8, marginTop:8, marginBottom: sortedBlocked.length?14:0 }}>
+              <input type="date" min={ymd(new Date())} value={dateDraft} onChange={e=>setDateDraft(e.target.value)} style={{ ...fieldStyle, flex:1 }}/>
+              <Btn small onClick={addBlocked} icon="check" disabled={!dateDraft}>Add</Btn>
+            </div>
+            {sortedBlocked.length===0
+              ? <div style={{ color:C.text3, fontSize:"0.78rem", marginTop:10, fontStyle:"italic" }}>No days off scheduled.</div>
+              : sortedBlocked.map(d=>(
+                  <div key={d} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderTop:`1px solid ${C.surface3}` }}>
+                    <span style={{ color:C.text, fontSize:"0.85rem", fontWeight:600 }}>{new Date(d+"T00:00").toLocaleDateString([], {weekday:"short", year:"numeric", month:"short", day:"numeric"})}</span>
+                    <button onClick={()=>removeBlocked(d)} style={{ background:"transparent", border:"none", cursor:"pointer", color:C.red, padding:4, display:"flex" }}><Ico d={P.close} size={15} color={C.red}/></button>
+                  </div>
+                ))
+            }
+            <div style={{ color:C.text3, fontSize:"0.72rem", marginTop:12, display:"flex", gap:5, alignItems:"flex-start" }}><Ico d={P.alert} size={11} color={C.text3} style={{marginTop:2}}/>On these days customers see an "away" notice and can't schedule appointments.</div>
+          </Card>
         </>}
 
         {tab==="settings"&&<>
@@ -1145,7 +1322,7 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
           </Card>
           <Card>
             <Lbl icon="download">Data Export</Lbl>
-            <div style={{ color:C.text2, fontSize:"0.8rem", lineHeight:1.4, marginBottom:10 }}>Download all jobs — including prices and timestamps — as a CSV file for bookkeeping or taxes.</div>
+            <div style={{ color:C.text2, fontSize:"0.8rem", lineHeight:1.4, marginBottom:10 }}>Download all jobs — prices, tips, costs, and timestamps — as a CSV for bookkeeping or taxes.</div>
             <Btn small onClick={exportCSV} icon="download">Download CSV</Btn>
           </Card>
           <Card>
@@ -1176,6 +1353,7 @@ export default function App() {
   const [bizName,setBizName]=useState("AMS");
   const [availability,setAvailability]=useState(DEFAULT_AVAIL);
   const [busy,setBusy]=useState(false);
+  const [blockedDates,setBlockedDates]=useState([]);
   const [activeReq,setActiveReq]=useState(null);
   const [globalErr,setGlobalErr]=useState("");
 
@@ -1186,6 +1364,7 @@ export default function App() {
         const [settings, avail] = await Promise.all([ api("/api/settings"), api("/api/availability") ]);
         if (settings?.bizName) setBizName(settings.bizName);
         if (typeof settings?.busy === "boolean") setBusy(settings.busy);
+        if (Array.isArray(settings?.blockedDates)) setBlockedDates(settings.blockedDates);
         if (avail) setAvailability(avail);
       } catch {
         setGlobalErr("Couldn't reach the server. Make sure the backend is running.");
@@ -1218,6 +1397,11 @@ export default function App() {
     try { await api("/api/settings/busy", { method:"PUT", body:{ busy:next }, auth:true }); }
     catch (e) { if (e.status === 401) handleLogout(); }
   };
+  const handleBlockedDates = async (dates) => {
+    setBlockedDates(dates);
+    try { const res = await api("/api/settings/blocked-dates", { method:"PUT", body:{ dates }, auth:true }); if(Array.isArray(res?.blockedDates)) setBlockedDates(res.blockedDates); }
+    catch (e) { if (e.status === 401) handleLogout(); }
+  };
   const handleChangePassword = async (current, nw) => {
     await api("/api/change-password", { method:"POST", body:{ current, new:nw }, auth:true });
   };
@@ -1232,11 +1416,11 @@ export default function App() {
             {globalErr && view==="customer" && (
               <div style={{ maxWidth:600, margin:"14px auto 0", padding:"0 16px" }}><ErrorBar msg={globalErr} onClose={()=>setGlobalErr("")}/></div>
             )}
-            {view==="customer"&&<CustomerForm availability={availability} busy={busy} onSubmit={handleSubmit} onTrack={()=>setView("lookup")}/>}
+            {view==="customer"&&<CustomerForm availability={availability} busy={busy} blockedDates={blockedDates} onSubmit={handleSubmit} onTrack={()=>setView("lookup")}/>}
             {view==="lookup"&&<Lookup onBack={()=>setView("customer")}/>}
             {view==="confirm"&&activeReq&&<Confirmation initialReq={activeReq} callback={busy} onNew={()=>{setActiveReq(null);setView("customer");}}/>}
             {view==="login"&&<Login onLogin={handleLogin} onBack={()=>setView("customer")}/>}
-            {view==="dashboard"&&<Dashboard availability={availability} onAvailability={handleAvailability} bizName={bizName} onBizName={handleBizName} onChangePassword={handleChangePassword} onLogout={handleLogout} busy={busy} onBusy={handleBusy}/>}
+            {view==="dashboard"&&<Dashboard availability={availability} onAvailability={handleAvailability} bizName={bizName} onBizName={handleBizName} onChangePassword={handleChangePassword} onLogout={handleLogout} busy={busy} onBusy={handleBusy} blockedDates={blockedDates} onBlockedDates={handleBlockedDates}/>}
           </div>
         </div>
       </MobileCtx.Provider>
