@@ -15,7 +15,7 @@ const API_BASE =
   "http://localhost:5000";
 
 // ─── Instagram link ──────────────────────────────────────────
-const INSTAGRAM_URL = "https://www.instagram.com/1low_nelson/";
+const INSTAGRAM_URL = "https://www.instagram.com/placeholder/";
 
 // ─── Token + lang persistence ─────────────────────────────────
 const getToken = () => { try { return localStorage.getItem("ams-token") || ""; } catch { return ""; } };
