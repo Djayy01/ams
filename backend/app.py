@@ -1,27 +1,10 @@
 """
 AMS — Mobile Mechanic & Towing  ::  Backend API  (PostgreSQL version)
 Stack: Flask + PostgreSQL (psycopg 3)
-
-────────────────────────────────────────────────────────
-WHY THIS VERSION
-    Data lives in a separate PostgreSQL database, so redeploying or
-    restarting the app NEVER erases your requests, hours, or password.
-
-WHAT YOU NEED (all set in Part 3-D of the guide)
-    Environment variables on Render:
-      DATABASE_URL   ← auto-filled when you link the Render database
-      AMS_SECRET     ← a long random string (protects logins)
-      AMS_ORIGIN     ← your frontend URL, e.g. https://ams.onrender.com
-
-LOCAL TESTING (optional)
-    You need a local Postgres OR just point DATABASE_URL at your Render DB's
-    "External Database URL". Then:
-        pip install -r requirements.txt
-        python app.py
-────────────────────────────────────────────────────────
 """
 
 import os
+import re
 import json
 from datetime import datetime, timezone
 from functools import wraps
@@ -87,9 +70,15 @@ def init_db():
                     urg          TEXT NOT NULL,
                     sched_time   TEXT,
                     status       TEXT NOT NULL DEFAULT 'pending',
+                    notes        TEXT,
+                    price        TEXT,
                     submitted_at TEXT NOT NULL
                 )
             """)
+            # Add the new columns for databases created before this version (no-op if present).
+            cur.execute("ALTER TABLE requests ADD COLUMN IF NOT EXISTS notes TEXT")
+            cur.execute("ALTER TABLE requests ADD COLUMN IF NOT EXISTS price TEXT")
+
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS config (
                     key   TEXT PRIMARY KEY,
@@ -105,6 +94,8 @@ def init_db():
                 }
                 for k, v in seed.items():
                     cur.execute("INSERT INTO config (key, value) VALUES (%s, %s)", (k, v))
+            # Ensure the 'busy' flag exists for both brand-new and existing databases.
+            cur.execute("INSERT INTO config (key, value) VALUES ('busy', 'false') ON CONFLICT (key) DO NOTHING")
         conn.commit()
 
 
@@ -132,7 +123,8 @@ def row_to_request(r):
         "id": r["id"], "name": r["name"], "phone": r["phone"], "loc": r["loc"],
         "year": r["year"], "make": r["make"], "model": r["model"], "issue": r["issue"],
         "svc": r["svc"], "urg": r["urg"], "schedTime": r["sched_time"] or "",
-        "status": r["status"], "submittedAt": r["submitted_at"],
+        "status": r["status"], "notes": r.get("notes") or "", "price": r.get("price") or "",
+        "submittedAt": r["submitted_at"],
     }
 
 
@@ -186,6 +178,24 @@ def create_request():
     return jsonify(row_to_request(row)), 201
 
 
+@app.get("/api/requests/lookup")
+def lookup_requests():
+    """Public — a customer looks up their own request(s) by phone number.
+       Phone match ignores formatting (spaces, dashes, parens)."""
+    phone = (request.args.get("phone") or "").strip()
+    digits = re.sub(r"\D", "", phone)
+    if len(digits) < 7:
+        return jsonify({"error": "Enter a valid phone number"}), 400
+    db = get_db()
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT * FROM requests WHERE regexp_replace(phone, '\\D', '', 'g') = %s ORDER BY id DESC",
+            (digits,),
+        )
+        rows = cur.fetchall()
+    return jsonify([row_to_request(r) for r in rows])
+
+
 @app.get("/api/requests/<int:req_id>")
 def get_request(req_id):
     """Customer polls this to track their job status live."""
@@ -206,8 +216,11 @@ def get_availability():
 
 @app.get("/api/settings")
 def get_settings():
-    """Public-safe — returns the business name only, never the password."""
-    return jsonify({"bizName": cfg_get("business_name")})
+    """Public-safe — business name + busy flag. Never returns the password."""
+    return jsonify({
+        "bizName": cfg_get("business_name"),
+        "busy": (cfg_get("busy") or "false") == "true",
+    })
 
 
 @app.post("/api/login")
@@ -232,14 +245,25 @@ def list_requests():
 
 @app.patch("/api/requests/<int:req_id>")
 @require_auth
-def update_request_status(req_id):
+def update_request(req_id):
+    """Update any of: status, notes, price. Send only the field(s) you want changed."""
     d = request.get_json(force=True, silent=True) or {}
-    status = d.get("status")
-    if status not in VALID_STATUS:
-        return jsonify({"error": "Invalid status"}), 400
+    fields, values = [], []
+    if "status" in d:
+        if d["status"] not in VALID_STATUS:
+            return jsonify({"error": "Invalid status"}), 400
+        fields.append("status = %s"); values.append(d["status"])
+    if "notes" in d:
+        fields.append("notes = %s"); values.append(str(d.get("notes", "")))
+    if "price" in d:
+        fields.append("price = %s"); values.append(str(d.get("price", "")))
+    if not fields:
+        return jsonify({"error": "Nothing to update"}), 400
+
+    values.append(req_id)
     db = get_db()
     with db.cursor() as cur:
-        cur.execute("UPDATE requests SET status = %s WHERE id = %s RETURNING *", (status, req_id))
+        cur.execute(f"UPDATE requests SET {', '.join(fields)} WHERE id = %s RETURNING *", values)
         row = cur.fetchone()
     if not row:
         return jsonify({"error": "Not found"}), 404
@@ -270,6 +294,15 @@ def update_business_name():
     name = str(d.get("bizName", "")).strip() or "AMS"
     cfg_set("business_name", name)
     return jsonify({"bizName": name})
+
+
+@app.put("/api/settings/busy")
+@require_auth
+def update_busy():
+    """Flip the 'we'll call you back' mode on or off."""
+    d = request.get_json(force=True, silent=True) or {}
+    cfg_set("busy", "true" if d.get("busy") else "false")
+    return jsonify({"busy": (cfg_get("busy") or "false") == "true"})
 
 
 @app.post("/api/change-password")
