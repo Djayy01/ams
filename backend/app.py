@@ -1,10 +1,25 @@
 """
 AMS — Mobile Mechanic & Towing  ::  Backend API  (PostgreSQL version)
 Stack: Flask + PostgreSQL (psycopg 3)
+
+────────────────────────────────────────────────────────
+WHAT'S NEW IN THIS VERSION
+    • status_times: a timestamp is recorded for every status change
+      (powers "Accepted 2:41 · On the Way 2:55" + exact completion time)
+    • eta column: mechanic can set an arrival estimate ("~15 min")
+    • POST /api/requests/<id>/cancel  → customer cancels their own job
+      (verified by matching the phone number on the request)
+    • 'cancelled' status added; mechanics can reactivate any job by
+      PATCHing its status back (e.g. to 'pending' or 'accepted')
+    • Spam protection on the public form: a honeypot field + a simple
+      per-IP rate limit.
+    • All schema changes use IF NOT EXISTS, so existing data is preserved.
+────────────────────────────────────────────────────────
 """
 
 import os
 import re
+import time
 import json
 from datetime import datetime, timezone
 from functools import wraps
@@ -25,7 +40,12 @@ DEFAULT_PASSWORD = "mechanic123"
 
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 DEFAULT_AVAILABILITY = {d: {"on": d != "Sunday", "open": "08:00", "close": "18:00"} for d in DAYS}
-VALID_STATUS = {"pending", "accepted", "onway", "done", "dismissed"}
+VALID_STATUS = {"pending", "accepted", "onway", "done", "dismissed", "cancelled"}
+
+# Simple per-IP rate limit for the public submit form (in-memory).
+RATE_MAX    = 6      # max submissions...
+RATE_WINDOW = 600    # ...per this many seconds (10 minutes)
+_RATE = {}
 
 # Render sometimes provides a URL starting with "postgres://"; psycopg wants "postgresql://".
 if DATABASE_URL.startswith("postgres://"):
@@ -72,12 +92,21 @@ def init_db():
                     status       TEXT NOT NULL DEFAULT 'pending',
                     notes        TEXT,
                     price        TEXT,
+                    eta          TEXT,
+                    status_times TEXT,
                     submitted_at TEXT NOT NULL
                 )
             """)
-            # Add the new columns for databases created before this version (no-op if present).
+            # Add columns for databases created before each version (no-op if present).
             cur.execute("ALTER TABLE requests ADD COLUMN IF NOT EXISTS notes TEXT")
             cur.execute("ALTER TABLE requests ADD COLUMN IF NOT EXISTS price TEXT")
+            cur.execute("ALTER TABLE requests ADD COLUMN IF NOT EXISTS eta TEXT")
+            cur.execute("ALTER TABLE requests ADD COLUMN IF NOT EXISTS status_times TEXT")
+            # Backfill a 'pending' timestamp for older rows so their tracker has a start time.
+            cur.execute(
+                "UPDATE requests SET status_times = json_build_object('pending', submitted_at)::text "
+                "WHERE status_times IS NULL OR status_times = ''"
+            )
 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS config (
@@ -94,7 +123,6 @@ def init_db():
                 }
                 for k, v in seed.items():
                     cur.execute("INSERT INTO config (key, value) VALUES (%s, %s)", (k, v))
-            # Ensure the 'busy' flag exists for both brand-new and existing databases.
             cur.execute("INSERT INTO config (key, value) VALUES ('busy', 'false') ON CONFLICT (key) DO NOTHING")
         conn.commit()
 
@@ -118,12 +146,31 @@ def cfg_set(key, value):
     db.commit()
 
 
+def now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def stamp_status(times_json, status):
+    """Return an updated status_times JSON string with `status` set to now."""
+    try:
+        times = json.loads(times_json) if times_json else {}
+    except (ValueError, TypeError):
+        times = {}
+    times[status] = now_iso()
+    return json.dumps(times)
+
+
 def row_to_request(r):
+    try:
+        times = json.loads(r.get("status_times") or "{}")
+    except (ValueError, TypeError):
+        times = {}
     return {
         "id": r["id"], "name": r["name"], "phone": r["phone"], "loc": r["loc"],
         "year": r["year"], "make": r["make"], "model": r["model"], "issue": r["issue"],
         "svc": r["svc"], "urg": r["urg"], "schedTime": r["sched_time"] or "",
         "status": r["status"], "notes": r.get("notes") or "", "price": r.get("price") or "",
+        "eta": r.get("eta") or "", "statusTimes": times,
         "submittedAt": r["submitted_at"],
     }
 
@@ -142,6 +189,26 @@ def require_auth(fn):
     return wrapper
 
 
+# ──────────────────────── Spam protection helpers ────────────────────────
+def client_ip():
+    fwd = request.headers.get("X-Forwarded-For", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.remote_addr or "unknown"
+
+
+def rate_limited(ip):
+    """Naive in-memory sliding window. Resets on restart; assumes a single worker."""
+    now = time.time()
+    hits = [t for t in _RATE.get(ip, []) if now - t < RATE_WINDOW]
+    if len(hits) >= RATE_MAX:
+        _RATE[ip] = hits
+        return True
+    hits.append(now)
+    _RATE[ip] = hits
+    return False
+
+
 # ──────────────────────── CORS ────────────────────────
 @app.after_request
 def add_cors_headers(resp):
@@ -157,21 +224,31 @@ def add_cors_headers(resp):
 def create_request():
     """Customer submits a service request."""
     d = request.get_json(force=True, silent=True) or {}
+
+    # Honeypot: bots fill hidden fields; real users never do.
+    if str(d.get("company", "")).strip():
+        return jsonify({"error": "Submission rejected."}), 400
+
     for field in ("name", "phone", "loc", "svc", "urg"):
         if not str(d.get(field, "")).strip():
             return jsonify({"error": f"Missing field: {field}"}), 400
 
+    # Rate limit only well-formed submissions, so a fumbling user isn't penalized.
+    if rate_limited(client_ip()):
+        return jsonify({"error": "Too many requests — please wait a few minutes and try again."}), 429
+
     db = get_db()
-    now = datetime.now(timezone.utc).isoformat()
+    now = now_iso()
+    times = json.dumps({"pending": now})
     with db.cursor() as cur:
         cur.execute(
             """INSERT INTO requests
-               (name, phone, loc, year, make, model, issue, svc, urg, sched_time, status, submitted_at)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s)
+               (name, phone, loc, year, make, model, issue, svc, urg, sched_time, status, status_times, submitted_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s)
                RETURNING *""",
             (d.get("name", "").strip(), d.get("phone", "").strip(), d.get("loc", "").strip(),
              d.get("year", ""), d.get("make", ""), d.get("model", ""), d.get("issue", ""),
-             d.get("svc", "Towing"), d.get("urg", "ASAP"), d.get("schedTime", ""), now),
+             d.get("svc", "Towing"), d.get("urg", "ASAP"), d.get("schedTime", ""), times, now),
         )
         row = cur.fetchone()
     db.commit()
@@ -206,6 +283,36 @@ def get_request(req_id):
     if not row:
         return jsonify({"error": "Not found"}), 404
     return jsonify(row_to_request(row))
+
+
+@app.post("/api/requests/<int:req_id>/cancel")
+def cancel_request(req_id):
+    """Public — a customer cancels their own request, verified by phone number."""
+    d = request.get_json(force=True, silent=True) or {}
+    digits = re.sub(r"\D", "", str(d.get("phone", "")))
+    if len(digits) < 7:
+        return jsonify({"error": "Enter the phone number on your request to cancel."}), 400
+
+    db = get_db()
+    with db.cursor() as cur:
+        cur.execute("SELECT * FROM requests WHERE id = %s", (req_id,))
+        row = cur.fetchone()
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+    if re.sub(r"\D", "", row["phone"]) != digits:
+        return jsonify({"error": "That phone number doesn't match this request."}), 403
+    if row["status"] in ("done", "dismissed", "cancelled"):
+        return jsonify({"error": "This request can no longer be cancelled."}), 400
+
+    new_times = stamp_status(row.get("status_times"), "cancelled")
+    with db.cursor() as cur:
+        cur.execute(
+            "UPDATE requests SET status = 'cancelled', status_times = %s WHERE id = %s RETURNING *",
+            (new_times, req_id),
+        )
+        updated = cur.fetchone()
+    db.commit()
+    return jsonify(row_to_request(updated))
 
 
 @app.get("/api/availability")
@@ -246,29 +353,38 @@ def list_requests():
 @app.patch("/api/requests/<int:req_id>")
 @require_auth
 def update_request(req_id):
-    """Update any of: status, notes, price. Send only the field(s) you want changed."""
+    """Update any of: status, notes, price, eta. Send only what you want changed.
+       Changing status also records a timestamp for that status."""
     d = request.get_json(force=True, silent=True) or {}
+
+    db = get_db()
+    with db.cursor() as cur:
+        cur.execute("SELECT * FROM requests WHERE id = %s", (req_id,))
+        row = cur.fetchone()
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+
     fields, values = [], []
     if "status" in d:
         if d["status"] not in VALID_STATUS:
             return jsonify({"error": "Invalid status"}), 400
         fields.append("status = %s"); values.append(d["status"])
+        fields.append("status_times = %s"); values.append(stamp_status(row.get("status_times"), d["status"]))
     if "notes" in d:
         fields.append("notes = %s"); values.append(str(d.get("notes", "")))
     if "price" in d:
         fields.append("price = %s"); values.append(str(d.get("price", "")))
+    if "eta" in d:
+        fields.append("eta = %s"); values.append(str(d.get("eta", "")))
     if not fields:
         return jsonify({"error": "Nothing to update"}), 400
 
     values.append(req_id)
-    db = get_db()
     with db.cursor() as cur:
         cur.execute(f"UPDATE requests SET {', '.join(fields)} WHERE id = %s RETURNING *", values)
-        row = cur.fetchone()
-    if not row:
-        return jsonify({"error": "Not found"}), 404
+        updated = cur.fetchone()
     db.commit()
-    return jsonify(row_to_request(row))
+    return jsonify(row_to_request(updated))
 
 
 @app.put("/api/availability")
