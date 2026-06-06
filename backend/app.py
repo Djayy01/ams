@@ -221,7 +221,7 @@ def rate_limited(ip):
 def add_cors_headers(resp):
     resp.headers["Access-Control-Allow-Origin"] = ALLOWED_ORIGIN
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, PUT, OPTIONS"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, PUT, DELETE, OPTIONS"
     return resp
 
 
@@ -390,6 +390,20 @@ def update_request(req_id):
         updated = cur.fetchone()
     db.commit()
     return jsonify(row_to_request(updated))
+
+
+@app.delete("/api/requests/<int:req_id>")
+@require_auth
+def delete_request(req_id):
+    """Permanently delete a request (e.g. to clear out test submissions)."""
+    db = get_db()
+    with db.cursor() as cur:
+        cur.execute("DELETE FROM requests WHERE id = %s RETURNING id", (req_id,))
+        row = cur.fetchone()
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+    db.commit()
+    return jsonify({"ok": True, "id": req_id})
 
 
 @app.put("/api/availability")
