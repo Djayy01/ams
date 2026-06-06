@@ -6,10 +6,13 @@
   expense + tip tracking with profit analytics, and time-off / vacation mode —
   on top of everything before it.
 
-  SETUP REMINDER
-    • This is src/App.jsx in your Vite React project.
-    • Point it at your backend via VITE_API_URL on Render.
-    • Deploy: git add . && git commit -m "features" && git push
+  This update (no backend changes needed):
+    • Favicon / tab icon — inline car-service SVG (see FAVICON_SVG credit below)
+    • Tab name — set to the business name + tagline, auto-updates on rename/language
+    • Language button — globe icon that toggles EN/ES (replaces the EN/ES pill)
+    • Dismiss — available on every request; dismissed jobs are hidden from the
+      main queue (recoverable via the "Dismissed" view → Reopen Job)
+
 */
 
 import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
@@ -19,7 +22,27 @@ const API_BASE =
   (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_API_URL) ||
   "http://localhost:5000";
 
-const INSTAGRAM_URL = "https://www.instagram.com/1low_nelson/";
+const INSTAGRAM_URL = "https://www.instagram.com/placeholder/";
+
+/*
+  Favicon / tab icon.
+  Original inline SVG — no external request, so there's nothing to break on Render.
+  Drawn in the spirit of the free Flaticon "car service" / auto icon.
+  Credit (per Flaticon free license — kept in code, NOT shown to customers):
+    Car service icons created by wanicon — Flaticon
+    https://www.flaticon.com/free-icons/car-service
+*/
+const FAVICON_SVG =
+`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs><linearGradient id="amsfav" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#2563eb"/><stop offset="1" stop-color="#0ea5e9"/>
+  </linearGradient></defs>
+  <rect width="64" height="64" rx="15" fill="url(#amsfav)"/>
+  <path d="M11 39c0-1 .6-2 1.6-2.4l3-1.2 3.1-6.6C19.3 27.3 20.5 26 22 26h20c1.5 0 2.7 1.3 3.3 2.8l3.1 6.6 3 1.2c1 .4 1.6 1.4 1.6 2.4v3.5c0 .8-.7 1.5-1.5 1.5H12.5c-.8 0-1.5-.7-1.5-1.5z" fill="#fff"/>
+  <path d="M23 28.5h18l2 5H21z" fill="url(#amsfav)"/>
+  <circle cx="22" cy="44" r="4.5" fill="url(#amsfav)" stroke="#fff" stroke-width="2.5"/>
+  <circle cx="42" cy="44" r="4.5" fill="url(#amsfav)" stroke="#fff" stroke-width="2.5"/>
+</svg>`;
 
 // ─── Local storage helpers ────────────────────────────────────
 const getToken = () => { try { return localStorage.getItem("ams-token") || ""; } catch { return ""; } };
@@ -152,7 +175,7 @@ const STR = {
 const LangCtx = createContext({ lang:"en", setLang:()=>{}, t:(k)=>k });
 const useLang = () => useContext(LangCtx);
 
-// ─── Resource Injection (font, viewport, global CSS + aurora) ──
+// ─── Resource Injection (font, viewport, favicon, global CSS + aurora) ──
 const injectResources = () => {
   if (!document.getElementById("ws-font")) {
     const l = document.createElement("link");
@@ -164,6 +187,14 @@ const injectResources = () => {
     const v = document.createElement("meta");
     v.name = "viewport"; v.content = "width=device-width, initial-scale=1, viewport-fit=cover";
     document.head.appendChild(v);
+  }
+  // Favicon / tab icon — replace any default (e.g. Vite's vite.svg) with the AMS car icon.
+  if (!document.getElementById("ams-favicon")) {
+    document.querySelectorAll("link[rel~='icon']").forEach(el => el.parentNode && el.parentNode.removeChild(el));
+    const fav = document.createElement("link");
+    fav.id = "ams-favicon"; fav.rel = "icon"; fav.type = "image/svg+xml";
+    fav.href = "data:image/svg+xml," + encodeURIComponent(FAVICON_SVG);
+    document.head.appendChild(fav);
   }
   if (!document.getElementById("ams-global")) {
     const s = document.createElement("style");
@@ -398,14 +429,22 @@ const MapEmbed = ({ location }) => {
   );
 };
 
+// Language switcher — a single globe button that toggles EN ↔ ES.
 const LangToggle = ({ m }) => {
   const { lang, setLang } = useLang();
+  const next = lang === "en" ? "es" : "en";
   return (
-    <div style={{ display:"flex", border:`1.5px solid ${C.border}`, borderRadius:9, overflow:"hidden", background:"#fff", flexShrink:0 }}>
-      {["en","es"].map(l=>(
-        <button key={l} onClick={()=>setLang(l)} aria-label={l==="en"?"English":"Español"} style={{ padding:m?"6px 9px":"7px 11px", border:"none", cursor:"pointer", background:lang===l?C.blue:"transparent", color:lang===l?"#fff":C.text2, fontWeight:800, fontSize:"0.7rem", letterSpacing:"0.04em", textTransform:"uppercase" }}>{l}</button>
-      ))}
-    </div>
+    <button
+      onClick={()=>setLang(next)}
+      aria-label={lang==="en" ? "Switch to Español" : "Cambiar a English"}
+      title={lang==="en" ? "Español" : "English"}
+      style={{ display:"inline-flex", alignItems:"center", gap:6, padding:m?"6px 10px":"7px 12px", border:`1.5px solid ${C.border}`, borderRadius:9, background:"#fff", color:C.text2, cursor:"pointer", fontWeight:800, fontSize:"0.7rem", letterSpacing:"0.04em", textTransform:"uppercase", flexShrink:0, transition:"transform .15s" }}
+      onMouseOver={e=>{e.currentTarget.style.transform="translateY(-1px)";}}
+      onMouseOut={e=>{e.currentTarget.style.transform="translateY(0)";}}
+    >
+      <Ico d={P.globe} size={m?16:17} color={C.blue}/>
+      <span>{lang}</span>
+    </button>
   );
 };
 
@@ -926,6 +965,7 @@ const ReqCard = ({ req, onPatch, busyId, repeat, onHistory }) => {
         <Btn small outline href={mapsDir(req.loc)} target="_blank" icon="nav">Directions</Btn>
         <Btn small outline color={C.text2} onClick={()=>setShowAdmin(v=>!v)} icon="edit">Notes / Money</Btn>
         {showReceipt && <Btn small outline color={C.blue} onClick={()=>printReceipt(req, "AMS")} icon="receipt">Receipt</Btn>}
+        {req.status!=="dismissed" && <Btn small outline color={C.text2} onClick={()=>onPatch(req.id,{status:"dismissed"})} icon="close" disabled={busy}>Dismiss</Btn>}
       </div>
 
       {showAdmin && (
@@ -945,7 +985,7 @@ const ReqCard = ({ req, onPatch, busyId, repeat, onHistory }) => {
         </div>
       )}
 
-      {req.status==="pending"&&<div style={{ display:"flex", gap:8, flexWrap:"wrap" }}><Btn small onClick={()=>onPatch(req.id,{status:"accepted"})} icon="check" disabled={busy}>Accept</Btn><Btn small outline color={C.text2} onClick={()=>onPatch(req.id,{status:"dismissed"})} disabled={busy}>Dismiss</Btn></div>}
+      {req.status==="pending"&&<div style={{ display:"flex", gap:8, flexWrap:"wrap" }}><Btn small onClick={()=>onPatch(req.id,{status:"accepted"})} icon="check" disabled={busy}>Accept</Btn></div>}
 
       {req.status==="accepted"&&(
         etaOpen ? (
@@ -994,6 +1034,7 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
   const [schedView,setSchedView]=useState("today");
   const [history,setHistory]=useState(null);
   const [dateDraft,setDateDraft]=useState("");
+  const [showDismissed,setShowDismissed]=useState(false);
 
   const [newBiz,setNewBiz]=useState(bizName);
   const [curPw,setCurPw]=useState(""); const [newPw,setNewPw]=useState(""); const [confPw,setConfPw]=useState("");
@@ -1073,13 +1114,17 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
   requests.forEach(r=>{ const k=r.phone.replace(/\D/g,""); if(k) phoneCounts[k]=(phoneCounts[k]||0)+1; });
 
   const qd=query.replace(/\D/g,"");
+  const dismissedCount=requests.filter(r=>r.status==="dismissed").length;
   const visible=requests.filter(r=>{
     if(!query.trim()) return true;
     const q=query.toLowerCase();
     return r.name.toLowerCase().includes(q)
       || (qd.length>=3 && r.phone.replace(/\D/g,"").includes(qd))
       || `${r.year} ${r.make} ${r.model}`.toLowerCase().includes(q);
-  });
+  }).filter(r => showDismissed ? r.status==="dismissed" : r.status!=="dismissed");
+
+  // If there's nothing left in the dismissed bin, fall back to the normal queue.
+  useEffect(()=>{ if(showDismissed && dismissedCount===0) setShowDismissed(false); },[showDismissed, dismissedCount]);
 
   const todayJobs=requests.filter(r=>["accepted","onway","done"].includes(r.status)&&new Date(r.submittedAt).toDateString()===todayStr)
     .sort((a,b)=>(a.urg==="Scheduled"?new Date(a.schedTime):new Date(a.submittedAt))-(b.urg==="Scheduled"?new Date(b.schedTime):new Date(b.submittedAt)));
@@ -1188,9 +1233,16 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
             <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search by name, phone, or vehicle" style={{ ...fieldStyle, paddingLeft:34 }}/>
           </div>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8, gap:8 }}>
-            <button onClick={alertsOn?disableAlerts:enableAlerts} style={{ background:alertsOn?`${C.green}1f`:"rgba(255,255,255,0.92)", border:`1px solid ${alertsOn?C.green:"rgba(255,255,255,0.5)"}`, color:alertsOn?C.green:C.text2, borderRadius:9, padding:"7px 11px", fontSize:"0.72rem", fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
-              <Ico d={P.bell} size={13} color={alertsOn?C.green:C.text2}/>{alertsOn?"Alerts on":"Enable alerts"}
-            </button>
+            <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+              <button onClick={alertsOn?disableAlerts:enableAlerts} style={{ background:alertsOn?`${C.green}1f`:"rgba(255,255,255,0.92)", border:`1px solid ${alertsOn?C.green:"rgba(255,255,255,0.5)"}`, color:alertsOn?C.green:C.text2, borderRadius:9, padding:"7px 11px", fontSize:"0.72rem", fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+                <Ico d={P.bell} size={13} color={alertsOn?C.green:C.text2}/>{alertsOn?"Alerts on":"Enable alerts"}
+              </button>
+              {(dismissedCount>0 || showDismissed) && (
+                <button onClick={()=>setShowDismissed(v=>!v)} style={{ background:showDismissed?`${C.blue}1f`:"rgba(255,255,255,0.92)", border:`1px solid ${showDismissed?C.blue:"rgba(255,255,255,0.5)"}`, color:showDismissed?C.blue:C.text2, borderRadius:9, padding:"7px 11px", fontSize:"0.72rem", fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+                  <Ico d={P[showDismissed?"refresh":"close"]} size={13} color={showDismissed?C.blue:C.text2}/>{showDismissed?"Back to queue":`Dismissed (${dismissedCount})`}
+                </button>
+              )}
+            </div>
             <button onClick={loadRequests} style={{ background:"transparent", border:"none", color:ON.t2, fontSize:"0.74rem", fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", gap:5 }}><Ico d={P.refresh} size={13} color={ON.t2}/>Refresh</button>
           </div>
           {loading
@@ -1198,8 +1250,11 @@ const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangeP
             : requests.length===0
               ? <div style={{ color:ON.t3, textAlign:"center", padding:"56px 0", fontSize:"0.9rem" }}><Ico d={P.list} size={34} color="rgba(255,255,255,0.35)" style={{ display:"block", margin:"0 auto 12px" }}/>No requests yet.</div>
               : visible.length===0
-                ? <div style={{ color:ON.t3, textAlign:"center", padding:"48px 0", fontSize:"0.9rem" }}>No jobs match "{query}".</div>
-                : visible.map(r=><ReqCard key={r.id} req={r} onPatch={patchRequest} busyId={busyId} repeat={phoneCounts[r.phone.replace(/\D/g,"")]||1} onHistory={(p,n)=>setHistory({phone:p,name:n})}/>)
+                ? <div style={{ color:ON.t3, textAlign:"center", padding:"48px 0", fontSize:"0.9rem" }}>{showDismissed ? "No dismissed requests." : (query.trim() ? `No jobs match "${query}".` : "Nothing in the queue.")}</div>
+                : <>
+                    {showDismissed && <div style={{ color:ON.t3, fontSize:"0.78rem", marginBottom:10, display:"flex", gap:6, alignItems:"center" }}><Ico d={P.alert} size={12} color="rgba(255,255,255,0.55)"/>Dismissed requests — tap "Reopen Job" to bring one back.</div>}
+                    {visible.map(r=><ReqCard key={r.id} req={r} onPatch={patchRequest} busyId={busyId} repeat={phoneCounts[r.phone.replace(/\D/g,"")]||1} onHistory={(p,n)=>setHistory({phone:p,name:n})}/>)}
+                  </>
           }
         </>}
 
@@ -1371,6 +1426,9 @@ export default function App() {
       }
     })();
   },[]);
+
+  // Browser tab title: business name + tagline. Auto-updates on rename or language switch.
+  useEffect(()=>{ document.title = `${bizName} — ${t("tagline")}`; },[bizName, t]);
 
   const handleSubmit = async (formData) => {
     const created = await api("/api/requests", { method:"POST", body:formData });
