@@ -3,7 +3,7 @@
 export const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 export const DEFAULT_AVAIL = Object.fromEntries(DAYS.map(d => [d, { on: d !== "Sunday", open: "08:00", close: "18:00" }]));
 export const STEPS = ["pending","accepted","onway","done"];
-export const INSTAGRAM_URL = "https://www.instagram.com/1low_nelson/";
+export const INSTAGRAM_URL = "https://www.instagram.com/placeholder/";
 
 export const formatPrice = (p) => { const n = String(p||"").replace(/[^0-9.]/g,""); return n ? "$"+n : ""; };
 export const priceNum   = (p) => parseFloat(String(p||"").replace(/[^0-9.]/g,"")) || 0;

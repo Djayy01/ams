@@ -1,6 +1,5 @@
 /*
   AMS — Mobile Mechanic & Towing  ::  Root component
-  Deploy: git add . && git commit -m "dark mode" && git push
 */
 
 import { useState, useEffect, useCallback } from "react";
