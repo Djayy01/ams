@@ -19,7 +19,7 @@ export const Confirmation = ({ initialReq, onNew, callback }) => {
   return (
     <div style={{ padding:m?"22px 12px":"28px 16px", maxWidth:600, margin:"0 auto" }}>
       <div style={{ textAlign:"center", marginBottom:24 }}>
-        <div style={{ width:66, height:66, background:`linear-gradient(135deg, ${C.blue}, ${C.sky})`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 14px", boxShadow:"0 10px 30px rgba(0,0,0,0.3)" }}><Ico d={P.check} size={32} color="#fff"/></div>
+        <div className="ams-pop ams-ring" style={{ width:66, height:66, background:`linear-gradient(135deg, ${C.blue}, ${C.sky})`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 14px", boxShadow:"0 10px 30px rgba(0,0,0,0.3)" }}><Ico d={P.check} size={32} color="#fff"/></div>
         <div style={{ color:ON.t, fontWeight:900, fontSize:"1.4rem", textShadow:"0 2px 16px rgba(0,0,0,0.28)" }}>{callback?t("callbackReceived"):t("requestSubmitted")}</div>
         <div style={{ color:ON.t2, fontSize:"0.88rem", marginTop:6 }}>{t("confirmThanks")}</div>
       </div>

@@ -131,6 +131,24 @@ export const injectResources = () => {
         50%      { background-position: 100% 50%, 0% 50%, 50% 0%, 50% 100%, 0 0; }
       }
       @media (prefers-reduced-motion: reduce) { .ams-aurora { animation: none; } }
+
+      .ams-shimmer {
+        background: linear-gradient(90deg, rgba(219,230,244,0.55) 25%, rgba(231,238,248,0.95) 37%, rgba(219,230,244,0.55) 63%);
+        background-size: 400% 100%;
+        animation: amsShimmer 1.4s ease infinite;
+      }
+      @keyframes amsShimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+
+      .ams-pop { animation: amsPop .5s cubic-bezier(.18,.89,.32,1.28) both; }
+      @keyframes amsPop { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
+
+      .ams-ring { animation: amsRing 1.1s ease-out .15s both; }
+      @keyframes amsRing { 0% { box-shadow: 0 0 0 0 rgba(14,165,233,0.45); } 100% { box-shadow: 0 0 0 22px rgba(14,165,233,0); } }
+
+      @media (prefers-reduced-motion: reduce) {
+        .ams-shimmer { animation: none; }
+        .ams-pop, .ams-ring { animation: none; }
+      }
     `;
     document.head.appendChild(s);
   }

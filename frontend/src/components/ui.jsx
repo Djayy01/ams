@@ -9,6 +9,32 @@ export const AuroraBackground = () => (
   <div className="ams-aurora" aria-hidden="true" style={{ position:"fixed", inset:0, zIndex:0, pointerEvents:"none" }} />
 );
 
+export const Skeleton = ({ h = 14, w = "100%", r = 8, style = {} }) => (
+  <div className="ams-shimmer" style={{ height: h, width: w, borderRadius: r, ...style }} />
+);
+
+export const SkeletonCard = () => (
+  <Card>
+    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
+      <Skeleton h={36} w={36} r={10} />
+      <div style={{ flex:1 }}>
+        <Skeleton h={13} w="55%" style={{ marginBottom:7 }} />
+        <Skeleton h={10} w="32%" />
+      </div>
+      <Skeleton h={20} w={70} r={6} />
+    </div>
+    <Skeleton h={30} w="60%" r={9} style={{ marginBottom:12 }} />
+    <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+      <Skeleton h={34} w="50%" />
+      <Skeleton h={34} w="50%" />
+    </div>
+    <div style={{ display:"flex", gap:8 }}>
+      <Skeleton h={32} w={92} r={9} />
+      <Skeleton h={32} w={110} r={9} />
+    </div>
+  </Card>
+);
+
 export const Badge = ({ status }) => {
   const m = SM[status] || SM.pending;
   return <span style={{ background:m.c+"1f", color:m.c, border:`1px solid ${m.c}40`, borderRadius:5, padding:"2px 8px", fontSize:"0.65rem", fontWeight:800, letterSpacing:"0.07em", textTransform:"uppercase" }}>{m.label}</span>;

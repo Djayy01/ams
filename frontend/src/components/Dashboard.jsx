@@ -4,9 +4,10 @@ import { P, Ico } from "../icons";
 import { useMobile } from "../contexts";
 import { api, getAlerts, setAlertsLS } from "../api";
 import { money, priceNum, net, doneDate, ymd, mapsDir, DAYS, DEFAULT_AVAIL } from "../helpers";
-import { Card, Btn, ErrorBar, SectionHead, Lbl, Inp, Badge } from "./ui";
+import { Card, Btn, ErrorBar, SectionHead, Lbl, Inp, Badge, SkeletonCard } from "./ui";
 import { ReqCard } from "./ReqCard";
 import { HistoryModal } from "./HistoryModal";
+import { EarningsChart } from "./EarningsChart";
 
 export const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangePassword, onLogout, busy, onBusy, blockedDates, onBlockedDates }) => {
   const m = useMobile();
@@ -201,6 +202,7 @@ export const Dashboard = ({ availability, onAvailability, bizName, onBizName, on
               <span>{monthJobs.length} job{monthJobs.length===1?"":"s"}</span>
             </div>
           </div>
+          <EarningsChart requests={requests}/>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
             {STATS.map(([n,l,c,ic])=>(
               <div key={l} style={{ ...card(), borderRadius:14, padding:"15px 16px", borderTop:`4px solid ${c}` }}>
@@ -230,7 +232,7 @@ export const Dashboard = ({ availability, onAvailability, bizName, onBizName, on
             <button onClick={loadRequests} style={{ background:"transparent", border:"none", color:ON.t2, fontSize:"0.74rem", fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", gap:5 }}><Ico d={P.refresh} size={13} color={ON.t2}/>Refresh</button>
           </div>
           {loading
-            ? <div style={{ color:ON.t2, textAlign:"center", padding:"48px 0", fontSize:"0.9rem" }}>Loading requests…</div>
+            ? <>{Array.from({length:3}).map((_,i)=><SkeletonCard key={i}/>)}</>
             : requests.length===0
               ? <div style={{ color:ON.t3, textAlign:"center", padding:"56px 0", fontSize:"0.9rem" }}><Ico d={P.list} size={34} color="rgba(255,255,255,0.35)" style={{ display:"block", margin:"0 auto 12px" }}/>No requests yet.</div>
               : visible.length===0
