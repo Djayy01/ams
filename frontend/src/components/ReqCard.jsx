@@ -103,15 +103,19 @@ export const ReqCard = ({ req, onPatch, busyId, repeat, onHistory }) => {
       {req.status==="pending"&&<div style={{ display:"flex", gap:8, flexWrap:"wrap" }}><Btn small onClick={()=>onPatch(req.id,{status:"accepted"})} icon="check" disabled={busy}>Accept</Btn></div>}
 
       {req.status==="accepted"&&(
-        etaOpen ? (
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
-            <input value={etaDraft} onChange={e=>setEtaDraft(e.target.value)} placeholder="ETA e.g. ~15 min" style={{ ...fieldStyle, flex:1, minWidth:130, padding:"9px 11px" }}/>
-            <Btn small color={C.sky} onClick={startOnway} icon="tow" disabled={etaBusy}>{etaBusy?"…":"On the Way"}</Btn>
-            <Btn small outline color={C.text2} onClick={()=>setEtaOpen(false)} disabled={etaBusy}>Cancel</Btn>
+            <Btn small color={C.sky} onClick={()=>onPatch(req.id,{status:"onway"})} icon="tow" disabled={busy}>On the Way</Btn>
+            {!etaOpen && <button onClick={()=>{setEtaDraft(req.eta||"");setEtaOpen(true);}} style={{ background:"transparent", border:"none", color:C.blue, fontWeight:700, fontSize:"0.72rem", cursor:"pointer", textTransform:"uppercase" }}>+ Set ETA</button>}
           </div>
-        ) : (
-          <Btn small color={C.sky} onClick={()=>{setEtaDraft(req.eta||"");setEtaOpen(true);}} icon="tow" disabled={busy}>On the Way</Btn>
-        )
+          {etaOpen && (
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
+              <input value={etaDraft} onChange={e=>setEtaDraft(e.target.value)} placeholder="ETA e.g. ~15 min" style={{ ...fieldStyle, flex:1, minWidth:130, padding:"9px 11px" }}/>
+              <Btn small color={C.sky} onClick={startOnway} icon="tow" disabled={etaBusy}>{etaBusy?"…":"Go"}</Btn>
+              <Btn small outline color={C.text2} onClick={()=>setEtaOpen(false)} disabled={etaBusy}>Cancel</Btn>
+            </div>
+          )}
+        </div>
       )}
 
       {req.status==="onway"&&(

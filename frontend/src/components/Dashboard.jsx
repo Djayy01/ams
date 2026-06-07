@@ -22,6 +22,8 @@ export const Dashboard = ({ availability, onAvailability, bizName, onBizName, on
   const [history,setHistory]=useState(null);
   const [dateDraft,setDateDraft]=useState("");
   const [showDismissed,setShowDismissed]=useState(false);
+  const [sortBy,setSortBy]=useState("newest");
+  const [statusFilter,setStatusFilter]=useState("all");
 
   const [newBiz,setNewBiz]=useState(bizName);
   const [curPw,setCurPw]=useState(""); const [newPw,setNewPw]=useState(""); const [confPw,setConfPw]=useState("");
@@ -102,13 +104,39 @@ export const Dashboard = ({ availability, onAvailability, bizName, onBizName, on
 
   const qd=query.replace(/\D/g,"");
   const dismissedCount=requests.filter(r=>r.status==="dismissed").length;
-  const visible=requests.filter(r=>{
+
+  const matchStatus=(r)=>{
+    if(statusFilter==="pending")   return r.status==="pending";
+    if(statusFilter==="active")    return ["accepted","onway"].includes(r.status);
+    if(statusFilter==="scheduled") return r.urg==="Scheduled" && ["pending","accepted","onway"].includes(r.status);
+    if(statusFilter==="done")      return r.status==="done";
+    return true; // "all"
+  };
+  const sortRequests=(list)=>{
+    const arr=[...list];
+    if(sortBy==="oldest") return arr.sort((a,b)=>a.id-b.id);
+    if(sortBy==="urgency"){
+      const openRank=(r)=>["pending","accepted","onway"].includes(r.status)?0:1;  // open jobs first
+      const urgRank=(r)=>r.urg==="Scheduled"?1:0;                                  // ASAP before Scheduled
+      return arr.sort((a,b)=>{
+        if(openRank(a)!==openRank(b)) return openRank(a)-openRank(b);
+        if(urgRank(a)!==urgRank(b)) return urgRank(a)-urgRank(b);
+        if(a.urg==="Scheduled" && b.urg==="Scheduled") return new Date(a.schedTime||0)-new Date(b.schedTime||0);
+        return b.id-a.id;
+      });
+    }
+    return arr.sort((a,b)=>b.id-a.id); // newest
+  };
+
+  let visible=requests.filter(r=>{
     if(!query.trim()) return true;
     const q=query.toLowerCase();
     return r.name.toLowerCase().includes(q)
       || (qd.length>=3 && r.phone.replace(/\D/g,"").includes(qd))
       || `${r.year} ${r.make} ${r.model}`.toLowerCase().includes(q);
   }).filter(r => showDismissed ? r.status==="dismissed" : r.status!=="dismissed");
+  if(!showDismissed) visible=visible.filter(matchStatus);
+  visible=sortRequests(visible);
 
   useEffect(()=>{ if(showDismissed && dismissedCount===0) setShowDismissed(false); },[showDismissed, dismissedCount]);
 
@@ -218,6 +246,21 @@ export const Dashboard = ({ availability, onAvailability, bizName, onBizName, on
             <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", display:"flex" }}><Ico d={P.search} size={15} color={C.text3}/></span>
             <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search by name, phone, or vehicle" style={{ ...fieldStyle, paddingLeft:34 }}/>
           </div>
+          {!showDismissed && (
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:8 }}>
+              {[["all","All"],["pending","Pending"],["active","Active"],["scheduled","Scheduled"],["done","Done"]].map(([id,l])=>{
+                const on=statusFilter===id;
+                return <button key={id} onClick={()=>setStatusFilter(id)} style={{ padding:"6px 12px", borderRadius:20, border:`1px solid ${on?C.blue:"rgba(255,255,255,0.5)"}`, background:on?C.blue:"rgba(255,255,255,0.92)", color:on?"#fff":C.text2, fontSize:"0.7rem", fontWeight:700, cursor:"pointer", textTransform:"uppercase", letterSpacing:"0.03em" }}>{l}</button>;
+              })}
+            </div>
+          )}
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8, flexWrap:"wrap" }}>
+            <span style={{ color:ON.t3, fontSize:"0.7rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em" }}>Sort</span>
+            {[["newest","Newest"],["oldest","Oldest"],["urgency","Urgency"]].map(([id,l])=>{
+              const on=sortBy===id;
+              return <button key={id} onClick={()=>setSortBy(id)} style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${on?C.blue:"rgba(255,255,255,0.5)"}`, background:on?C.blue:"rgba(255,255,255,0.92)", color:on?"#fff":C.text2, fontSize:"0.7rem", fontWeight:700, cursor:"pointer", textTransform:"uppercase", letterSpacing:"0.03em" }}>{l}</button>;
+            })}
+          </div>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8, gap:8 }}>
             <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
               <button onClick={alertsOn?disableAlerts:enableAlerts} style={{ background:alertsOn?`${C.green}1f`:"rgba(255,255,255,0.92)", border:`1px solid ${alertsOn?C.green:"rgba(255,255,255,0.5)"}`, color:alertsOn?C.green:C.text2, borderRadius:9, padding:"7px 11px", fontSize:"0.72rem", fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
@@ -236,7 +279,7 @@ export const Dashboard = ({ availability, onAvailability, bizName, onBizName, on
             : requests.length===0
               ? <div style={{ color:ON.t3, textAlign:"center", padding:"56px 0", fontSize:"0.9rem" }}><Ico d={P.list} size={34} color="rgba(255,255,255,0.35)" style={{ display:"block", margin:"0 auto 12px" }}/>No requests yet.</div>
               : visible.length===0
-                ? <div style={{ color:ON.t3, textAlign:"center", padding:"48px 0", fontSize:"0.9rem" }}>{showDismissed ? "No dismissed requests." : (query.trim() ? `No jobs match "${query}".` : "Nothing in the queue.")}</div>
+                ? <div style={{ color:ON.t3, textAlign:"center", padding:"48px 0", fontSize:"0.9rem" }}>{showDismissed ? "No dismissed requests." : (query.trim() ? `No jobs match "${query}".` : (statusFilter!=="all" ? "No jobs in this filter." : "Nothing in the queue."))}</div>
                 : <>
                     {showDismissed && <div style={{ color:ON.t3, fontSize:"0.78rem", marginBottom:10, display:"flex", gap:6, alignItems:"center" }}><Ico d={P.alert} size={12} color="rgba(255,255,255,0.55)"/>Dismissed requests — tap "Reopen Job" to bring one back.</div>}
                     {visible.map(r=><ReqCard key={r.id} req={r} onPatch={patchRequest} busyId={busyId} repeat={phoneCounts[r.phone.replace(/\D/g,"")]||1} onHistory={(p,n)=>setHistory({phone:p,name:n})}/>)}
