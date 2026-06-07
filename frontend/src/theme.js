@@ -1,8 +1,10 @@
 // Color palette, status metadata, and shared inline-style objects.
+// Structural colors are CSS variables (they flip under [data-theme="dark"]).
+// Accent colors stay hex so `${C.blue}40` opacity concatenation keeps working.
 
 export const C = {
-  surface:"#ffffff", surface2:"#f4f8fd", surface3:"#e7eef8", border:"#dbe6f4",
-  text:"#152840", text2:"#5f7691", text3:"#7a8ea9",
+  surface:"var(--ams-surface)", surface2:"var(--ams-surface2)", surface3:"var(--ams-surface3)", border:"var(--ams-border)",
+  text:"var(--ams-text)", text2:"var(--ams-text2)", text3:"var(--ams-text3)",
   blue:"#2563eb", blueL:"#3b82f6", sky:"#0ea5e9", amber:"#f59e0b", amberD:"#d97706",
   green:"#16a34a", red:"#ef4444",
 };
@@ -16,8 +18,8 @@ export const SM = {
 };
 
 export const card = () => ({
-  background:"rgba(255,255,255,0.95)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)",
-  border:"1px solid rgba(255,255,255,0.55)", boxShadow:"0 22px 55px rgba(8,28,52,0.42), 0 8px 22px rgba(8,28,52,0.24)"
+  background:"var(--ams-card-bg)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)",
+  border:"1px solid var(--ams-card-border)", boxShadow:"var(--ams-card-shadow)"
 });
 
 export const heroPill = {

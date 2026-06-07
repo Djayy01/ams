@@ -41,7 +41,7 @@ export const Badge = ({ status }) => {
 };
 
 export const Btn = ({ children, onClick, color=C.blue, outline, small, full, disabled, style={}, icon, href, target }) => {
-  const s = { background:outline?"#fff":color, color:outline?color:"#fff", border:`1.5px solid ${outline?C.border:color}`, borderRadius:9, fontWeight:700, cursor:disabled?"not-allowed":"pointer", opacity:disabled?0.6:1, padding:small?"8px 14px":"12px 20px", fontSize:small?"0.75rem":"0.85rem", width:full?"100%":undefined, letterSpacing:"0.04em", textTransform:"uppercase", display:"inline-flex", alignItems:"center", gap:7, justifyContent:"center", transition:"all .15s", boxShadow:outline?"none":`0 4px 14px ${color}40`, textDecoration:"none", boxSizing:"border-box", ...style };
+  const s = { background:outline?"var(--ams-surface)":color, color:outline?color:"#fff", border:`1.5px solid ${outline?C.border:color}`, borderRadius:9, fontWeight:700, cursor:disabled?"not-allowed":"pointer", opacity:disabled?0.6:1, padding:small?"8px 14px":"12px 20px", fontSize:small?"0.75rem":"0.85rem", width:full?"100%":undefined, letterSpacing:"0.04em", textTransform:"uppercase", display:"inline-flex", alignItems:"center", gap:7, justifyContent:"center", transition:"all .15s", boxShadow:outline?"none":`0 4px 14px ${color}40`, textDecoration:"none", boxSizing:"border-box", ...style };
   const over = e=>{ if(!disabled){e.currentTarget.style.transform="translateY(-1px)";e.currentTarget.style.opacity="0.94";} };
   const out  = e=>{ e.currentTarget.style.transform="translateY(0)"; e.currentTarget.style.opacity=disabled?"0.6":"1"; };
   if (href) return <a href={href} target={target} rel={target==="_blank"?"noopener noreferrer":undefined} style={s} onMouseOver={over} onMouseOut={out}>{icon&&<Ico d={P[icon]} size={14}/>}{children}</a>;
@@ -131,7 +131,7 @@ export const Nav = ({ bizName, isMech, onMechClick }) => {
   const m = useMobile();
   const { t } = useLang();
   return (
-    <div style={{ position:"sticky", top:0, zIndex:100, background:"rgba(255,255,255,0.86)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)", borderBottom:"1px solid rgba(255,255,255,0.4)", padding:m?"13px 14px":"16px 18px", display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"0 4px 20px rgba(8,28,52,0.10)" }}>
+    <div style={{ position:"sticky", top:0, zIndex:100, background:"var(--ams-nav-bg)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)", borderBottom:"1px solid rgba(255,255,255,0.4)", padding:m?"13px 14px":"16px 18px", display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"0 4px 20px rgba(8,28,52,0.10)" }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
         <div style={{ background:`linear-gradient(135deg, ${C.blue}, ${C.sky})`, borderRadius:10, width:m?30:34, height:m?30:34, display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 4px 12px ${C.blue}40`, flexShrink:0 }}>
           <Ico d={P.wrench} size={m?16:18} color="#fff"/>

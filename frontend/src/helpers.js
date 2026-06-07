@@ -104,6 +104,23 @@ export const injectResources = () => {
     const s = document.createElement("style");
     s.id = "ams-global";
     s.textContent = `
+      :root {
+        --ams-surface:#ffffff; --ams-surface2:#f4f8fd; --ams-surface3:#e7eef8; --ams-border:#dbe6f4;
+        --ams-text:#152840; --ams-text2:#5f7691; --ams-text3:#7a8ea9;
+        --ams-card-bg:rgba(255,255,255,0.95); --ams-card-border:rgba(255,255,255,0.55);
+        --ams-card-shadow:0 22px 55px rgba(8,28,52,0.42), 0 8px 22px rgba(8,28,52,0.24);
+        --ams-nav-bg:rgba(255,255,255,0.86);
+        --ams-chip-bg:rgba(255,255,255,0.92); --ams-chip-border:rgba(255,255,255,0.5);
+      }
+      [data-theme="dark"] {
+        --ams-surface:#16213a; --ams-surface2:#1c2942; --ams-surface3:#2a3a58; --ams-border:#33425f;
+        --ams-text:#e9eef7; --ams-text2:#9fb2cc; --ams-text3:#7e92b0;
+        --ams-card-bg:rgba(20,30,50,0.92); --ams-card-border:rgba(255,255,255,0.10);
+        --ams-card-shadow:0 22px 55px rgba(0,0,0,0.5), 0 8px 22px rgba(0,0,0,0.4);
+        --ams-nav-bg:rgba(15,23,40,0.82);
+        --ams-chip-bg:rgba(28,41,66,0.92); --ams-chip-border:rgba(255,255,255,0.16);
+      }
+
       * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
       html, body, #root { margin: 0; padding: 0; overflow-x: hidden; background: #0e3f63; }
       body { display: block; min-width: 0; }
@@ -130,12 +147,25 @@ export const injectResources = () => {
         0%, 100% { background-position: 0% 50%, 100% 50%, 50% 100%, 50% 0%, 0 0; }
         50%      { background-position: 100% 50%, 0% 50%, 50% 0%, 50% 100%, 0 0; }
       }
+      [data-theme="dark"] .ams-aurora {
+        background:
+          radial-gradient(45% 45% at 18% 22%, rgba(56,189,248,0.20), transparent 62%),
+          radial-gradient(45% 45% at 82% 18%, rgba(16,185,129,0.16), transparent 62%),
+          radial-gradient(50% 50% at 72% 82%, rgba(125,211,252,0.14), transparent 65%),
+          radial-gradient(55% 55% at 26% 80%, rgba(37,99,235,0.22), transparent 65%),
+          linear-gradient(155deg, #0a1830 0%, #08263a 45%, #07332c 75%, #0a1d38 100%);
+        background-size: 180% 180%, 180% 180%, 180% 180%, 180% 180%, 100% 100%;
+      }
       @media (prefers-reduced-motion: reduce) { .ams-aurora { animation: none; } }
 
       .ams-shimmer {
         background: linear-gradient(90deg, rgba(219,230,244,0.55) 25%, rgba(231,238,248,0.95) 37%, rgba(219,230,244,0.55) 63%);
         background-size: 400% 100%;
         animation: amsShimmer 1.4s ease infinite;
+      }
+      [data-theme="dark"] .ams-shimmer {
+        background: linear-gradient(90deg, rgba(40,54,82,0.6) 25%, rgba(58,74,104,0.9) 37%, rgba(40,54,82,0.6) 63%);
+        background-size: 400% 100%;
       }
       @keyframes amsShimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
 

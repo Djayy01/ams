@@ -29,6 +29,7 @@ export const P = {
   download:"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3",
   receipt:"M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1z M8 7h8 M8 11h8 M8 15h5",
   close:"M18 6L6 18 M6 6l12 12",
+  moon:"M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
 };
 
 export const Ico = ({ d, size = 16, color = "currentColor", style = {} }) => (

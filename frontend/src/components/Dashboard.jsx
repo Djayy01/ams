@@ -9,7 +9,7 @@ import { ReqCard } from "./ReqCard";
 import { HistoryModal } from "./HistoryModal";
 import { EarningsChart } from "./EarningsChart";
 
-export const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangePassword, onLogout, busy, onBusy, blockedDates, onBlockedDates }) => {
+export const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangePassword, onLogout, busy, onBusy, blockedDates, onBlockedDates, dark, onToggleDark }) => {
   const m = useMobile();
   const [tab,setTab]=useState("queue");
   const [requests,setRequests]=useState([]);
@@ -187,7 +187,7 @@ export const Dashboard = ({ availability, onAvailability, bizName, onBizName, on
       {history && <HistoryModal phone={history.phone} name={history.name} requests={requests} onClose={()=>setHistory(null)}/>}
       <div style={{ display:"flex", gap:m?4:6, padding:m?"12px 10px":"14px", borderBottom:"1px solid rgba(255,255,255,0.18)" }}>
         {TABS.map(tb=>(
-          <button key={tb.id} onClick={()=>setTab(tb.id)} style={{ flex:1, minWidth:0, padding:m?"9px 2px":"9px 4px", borderRadius:10, border:`1px solid ${tab===tb.id?C.blue:"rgba(255,255,255,0.4)"}`, cursor:"pointer", background:tab===tb.id?C.blue:"rgba(255,255,255,0.92)", color:tab===tb.id?"#fff":C.text2, fontWeight:700, fontSize:m?"0.58rem":"0.7rem", letterSpacing:"0.03em", textTransform:"uppercase", display:"flex", alignItems:"center", justifyContent:"center", gap:m?3:6, transition:"all .15s", boxShadow:tab===tb.id?`0 4px 12px ${C.blue}40`:"0 2px 10px rgba(8,28,52,0.12)" }}>
+          <button key={tb.id} onClick={()=>setTab(tb.id)} style={{ flex:1, minWidth:0, padding:m?"9px 2px":"9px 4px", borderRadius:10, border:`1px solid ${tab===tb.id?C.blue:"var(--ams-chip-border)"}`, cursor:"pointer", background:tab===tb.id?C.blue:"var(--ams-chip-bg)", color:tab===tb.id?"#fff":C.text2, fontWeight:700, fontSize:m?"0.58rem":"0.7rem", letterSpacing:"0.03em", textTransform:"uppercase", display:"flex", alignItems:"center", justifyContent:"center", gap:m?3:6, transition:"all .15s", boxShadow:tab===tb.id?`0 4px 12px ${C.blue}40`:"0 2px 10px rgba(8,28,52,0.12)" }}>
             <Ico d={P[tb.icon]} size={13} color={tab===tb.id?"#fff":C.text2}/>{tb.label}
           </button>
         ))}
@@ -250,7 +250,7 @@ export const Dashboard = ({ availability, onAvailability, bizName, onBizName, on
             <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:8 }}>
               {[["all","All"],["pending","Pending"],["active","Active"],["scheduled","Scheduled"],["done","Done"]].map(([id,l])=>{
                 const on=statusFilter===id;
-                return <button key={id} onClick={()=>setStatusFilter(id)} style={{ padding:"6px 12px", borderRadius:20, border:`1px solid ${on?C.blue:"rgba(255,255,255,0.5)"}`, background:on?C.blue:"rgba(255,255,255,0.92)", color:on?"#fff":C.text2, fontSize:"0.7rem", fontWeight:700, cursor:"pointer", textTransform:"uppercase", letterSpacing:"0.03em" }}>{l}</button>;
+                return <button key={id} onClick={()=>setStatusFilter(id)} style={{ padding:"6px 12px", borderRadius:20, border:`1px solid ${on?C.blue:"var(--ams-chip-border)"}`, background:on?C.blue:"var(--ams-chip-bg)", color:on?"#fff":C.text2, fontSize:"0.7rem", fontWeight:700, cursor:"pointer", textTransform:"uppercase", letterSpacing:"0.03em" }}>{l}</button>;
               })}
             </div>
           )}
@@ -258,16 +258,16 @@ export const Dashboard = ({ availability, onAvailability, bizName, onBizName, on
             <span style={{ color:ON.t3, fontSize:"0.7rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em" }}>Sort</span>
             {[["newest","Newest"],["oldest","Oldest"],["urgency","Urgency"]].map(([id,l])=>{
               const on=sortBy===id;
-              return <button key={id} onClick={()=>setSortBy(id)} style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${on?C.blue:"rgba(255,255,255,0.5)"}`, background:on?C.blue:"rgba(255,255,255,0.92)", color:on?"#fff":C.text2, fontSize:"0.7rem", fontWeight:700, cursor:"pointer", textTransform:"uppercase", letterSpacing:"0.03em" }}>{l}</button>;
+              return <button key={id} onClick={()=>setSortBy(id)} style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${on?C.blue:"var(--ams-chip-border)"}`, background:on?C.blue:"var(--ams-chip-bg)", color:on?"#fff":C.text2, fontSize:"0.7rem", fontWeight:700, cursor:"pointer", textTransform:"uppercase", letterSpacing:"0.03em" }}>{l}</button>;
             })}
           </div>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8, gap:8 }}>
             <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-              <button onClick={alertsOn?disableAlerts:enableAlerts} style={{ background:alertsOn?`${C.green}1f`:"rgba(255,255,255,0.92)", border:`1px solid ${alertsOn?C.green:"rgba(255,255,255,0.5)"}`, color:alertsOn?C.green:C.text2, borderRadius:9, padding:"7px 11px", fontSize:"0.72rem", fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+              <button onClick={alertsOn?disableAlerts:enableAlerts} style={{ background:alertsOn?`${C.green}1f`:"var(--ams-chip-bg)", border:`1px solid ${alertsOn?C.green:"var(--ams-chip-border)"}`, color:alertsOn?C.green:C.text2, borderRadius:9, padding:"7px 11px", fontSize:"0.72rem", fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
                 <Ico d={P.bell} size={13} color={alertsOn?C.green:C.text2}/>{alertsOn?"Alerts on":"Enable alerts"}
               </button>
               {(dismissedCount>0 || showDismissed) && (
-                <button onClick={()=>setShowDismissed(v=>!v)} style={{ background:showDismissed?`${C.blue}1f`:"rgba(255,255,255,0.92)", border:`1px solid ${showDismissed?C.blue:"rgba(255,255,255,0.5)"}`, color:showDismissed?C.blue:C.text2, borderRadius:9, padding:"7px 11px", fontSize:"0.72rem", fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+                <button onClick={()=>setShowDismissed(v=>!v)} style={{ background:showDismissed?`${C.blue}1f`:"var(--ams-chip-bg)", border:`1px solid ${showDismissed?C.blue:"var(--ams-chip-border)"}`, color:showDismissed?C.blue:C.text2, borderRadius:9, padding:"7px 11px", fontSize:"0.72rem", fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
                   <Ico d={P[showDismissed?"refresh":"close"]} size={13} color={showDismissed?C.blue:C.text2}/>{showDismissed?"Back to queue":`Dismissed (${dismissedCount})`}
                 </button>
               )}
@@ -290,7 +290,7 @@ export const Dashboard = ({ availability, onAvailability, bizName, onBizName, on
         {tab==="schedule"&&<>
           <div style={{ display:"flex", gap:8, marginBottom:14, maxWidth:280 }}>
             {[["today","Today"],["week","This Week"]].map(([id,l])=>(
-              <button key={id} onClick={()=>setSchedView(id)} style={{ flex:1, padding:"9px", borderRadius:9, fontWeight:700, fontSize:"0.72rem", cursor:"pointer", textTransform:"uppercase", letterSpacing:"0.04em", background:schedView===id?C.blue:"rgba(255,255,255,0.92)", color:schedView===id?"#fff":C.text2, border:`1px solid ${schedView===id?C.blue:"rgba(255,255,255,0.5)"}` }}>{l}</button>
+              <button key={id} onClick={()=>setSchedView(id)} style={{ flex:1, padding:"9px", borderRadius:9, fontWeight:700, fontSize:"0.72rem", cursor:"pointer", textTransform:"uppercase", letterSpacing:"0.04em", background:schedView===id?C.blue:"var(--ams-chip-bg)", color:schedView===id?"#fff":C.text2, border:`1px solid ${schedView===id?C.blue:"var(--ams-chip-border)"}` }}>{l}</button>
             ))}
           </div>
 
@@ -401,6 +401,17 @@ export const Dashboard = ({ availability, onAvailability, bizName, onBizName, on
               </div>
               <div onClick={()=>onBusy(!busy)} style={{ width:46, height:26, borderRadius:13, cursor:"pointer", position:"relative", background:busy?C.amber:C.surface3, transition:"background .2s", flexShrink:0, marginTop:2 }}>
                 <div style={{ position:"absolute", top:3, left:busy?23:3, width:20, height:20, borderRadius:"50%", background:"#fff", transition:"left .2s", boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }}/>
+              </div>
+            </div>
+          </Card>
+          <Card>
+            <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:12 }}>
+              <div style={{ minWidth:0 }}>
+                <Lbl icon="moon">Dark Mode</Lbl>
+                <div style={{ color:C.text2, fontSize:"0.8rem", lineHeight:1.4 }}>Easier on the eyes for night work. Applies to your dashboard only — the customer site always stays light.</div>
+              </div>
+              <div onClick={onToggleDark} style={{ width:46, height:26, borderRadius:13, cursor:"pointer", position:"relative", background:dark?C.blue:C.surface3, transition:"background .2s", flexShrink:0, marginTop:2 }}>
+                <div style={{ position:"absolute", top:3, left:dark?23:3, width:20, height:20, borderRadius:"50%", background:"#fff", transition:"left .2s", boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }}/>
               </div>
             </div>
           </Card>

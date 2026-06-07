@@ -1,13 +1,10 @@
 /*
   AMS — Mobile Mechanic & Towing  ::  Root component
-  Wires up language + responsive contexts, loads settings, and routes views.
-  All UI lives in ./components; shared logic in ./api, ./theme, ./helpers, etc.
-
-  Deploy: git add . && git commit -m "split frontend" && git push
+  Deploy: git add . && git commit -m "dark mode" && git push
 */
 
 import { useState, useEffect, useCallback } from "react";
-import { api, setToken, getLang, setLangLS } from "./api";
+import { api, setToken, getLang, setLangLS, getTheme, setThemeLS } from "./api";
 import { C } from "./theme";
 import { STR } from "./translations";
 import { DEFAULT_AVAIL, injectResources } from "./helpers";
@@ -32,6 +29,9 @@ export default function App() {
   const [blockedDates, setBlockedDates] = useState([]);
   const [activeReq, setActiveReq] = useState(null);
   const [globalErr, setGlobalErr] = useState("");
+  const [dark, setDark] = useState(() => getTheme() === "dark");
+
+  const toggleDark = () => setDark(d => { const n = !d; setThemeLS(n ? "dark" : "light"); return n; });
 
   useEffect(() => {
     injectResources();
@@ -48,7 +48,6 @@ export default function App() {
     })();
   }, []);
 
-  // Browser tab title: business name + tagline. Auto-updates on rename or language switch.
   useEffect(() => { document.title = `${bizName} — ${t("tagline")}`; }, [bizName, t]);
 
   const handleSubmit = async (formData) => {
@@ -88,7 +87,7 @@ export default function App() {
   return (
     <LangCtx.Provider value={{ lang, setLang, t }}>
       <MobileCtx.Provider value={isMobile}>
-        <div style={{ minHeight: "100vh", fontFamily: "'Work Sans',system-ui,sans-serif", color: C.text, position: "relative", background: "#0e3f63" }}>
+        <div data-theme={view === "dashboard" && dark ? "dark" : "light"} style={{ minHeight: "100vh", fontFamily: "'Work Sans',system-ui,sans-serif", color: C.text, position: "relative", background: "#0e3f63" }}>
           <AuroraBackground />
           <div style={{ position: "relative", zIndex: 1, paddingBottom: isMobile ? "calc(56px + env(safe-area-inset-bottom))" : 80 }}>
             <Nav bizName={bizName} isMech={view === "dashboard"} onMechClick={() => setView("login")} />
@@ -99,7 +98,7 @@ export default function App() {
             {view === "lookup" && <Lookup onBack={() => setView("customer")} />}
             {view === "confirm" && activeReq && <Confirmation initialReq={activeReq} callback={busy} onNew={() => { setActiveReq(null); setView("customer"); }} />}
             {view === "login" && <Login onLogin={handleLogin} onBack={() => setView("customer")} />}
-            {view === "dashboard" && <Dashboard availability={availability} onAvailability={handleAvailability} bizName={bizName} onBizName={handleBizName} onChangePassword={handleChangePassword} onLogout={handleLogout} busy={busy} onBusy={handleBusy} blockedDates={blockedDates} onBlockedDates={handleBlockedDates} />}
+            {view === "dashboard" && <Dashboard availability={availability} onAvailability={handleAvailability} bizName={bizName} onBizName={handleBizName} onChangePassword={handleChangePassword} onLogout={handleLogout} busy={busy} onBusy={handleBusy} blockedDates={blockedDates} onBlockedDates={handleBlockedDates} dark={dark} onToggleDark={toggleDark} />}
           </div>
         </div>
       </MobileCtx.Provider>

@@ -13,6 +13,8 @@ export const saveCustomer = (c) => { try { localStorage.setItem("ams-customer", 
 export const clearSavedCustomer = () => { try { localStorage.removeItem("ams-customer"); } catch {} };
 export const getAlerts = () => { try { return localStorage.getItem("ams-alerts") === "1"; } catch { return false; } };
 export const setAlertsLS = (on) => { try { on ? localStorage.setItem("ams-alerts","1") : localStorage.removeItem("ams-alerts"); } catch {} };
+export const getTheme = () => { try { return localStorage.getItem("ams-theme") === "dark" ? "dark" : "light"; } catch { return "light"; } };
+export const setThemeLS = (mode) => { try { localStorage.setItem("ams-theme", mode === "dark" ? "dark" : "light"); } catch {} };
 
 export async function api(path, { method = "GET", body, auth = false } = {}) {
   const headers = { "Content-Type": "application/json" };
