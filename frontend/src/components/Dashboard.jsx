@@ -8,6 +8,7 @@ import { Card, Btn, ErrorBar, SectionHead, Lbl, Inp, Badge, SkeletonCard } from 
 import { ReqCard } from "./ReqCard";
 import { HistoryModal } from "./HistoryModal";
 import { EarningsChart } from "./EarningsChart";
+import { BlockDaysOff } from "./BlockDaysOff";
 
 export const Dashboard = ({ availability, onAvailability, bizName, onBizName, onChangePassword, onLogout, busy, onBusy, blockedDates, onBlockedDates, dark, onToggleDark }) => {
   const m = useMobile();
@@ -381,40 +382,7 @@ export const Dashboard = ({ availability, onAvailability, bizName, onBizName, on
           <div style={{ color:ON.t3, fontSize:"0.75rem", margin:"8px 0 18px", display:"flex", gap:5, alignItems:"center" }}><Ico d={P.check} size={11} color="#86efac"/>Changes save automatically.</div>
 
           <SectionHead icon="cal">Time Off</SectionHead>
-          <Card>
-            <Lbl icon="cal">Block days off</Lbl>
-            <div style={{ display:"flex", gap:8, marginTop:8, flexWrap:"wrap", alignItems:"flex-end" }}>
-              <div style={{ flex:1, minWidth:120 }}>
-                <div style={{ color:C.text3, fontSize:"0.66rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>From</div>
-                <input type="date" min={ymd(new Date())} value={startDraft} onChange={e=>{ setStartDraft(e.target.value); if(endDraft && e.target.value>endDraft) setEndDraft(e.target.value); }} style={{ ...fieldStyle }}/>
-              </div>
-              <div style={{ flex:1, minWidth:120 }}>
-                <div style={{ color:C.text3, fontSize:"0.66rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>To <span style={{ textTransform:"none", fontWeight:500 }}>(optional)</span></div>
-                <input type="date" min={startDraft || ymd(new Date())} value={endDraft} onChange={e=>setEndDraft(e.target.value)} style={{ ...fieldStyle }}/>
-              </div>
-              <Btn small onClick={addRange} icon="check" disabled={!startDraft}>Add</Btn>
-            </div>
-            <div style={{ color:C.text3, fontSize:"0.72rem", marginTop:8 }}>Leave "To" empty to block a single day, or set it to block a whole range.</div>
-            <div style={{ marginTop: blockedGroups.length?14:0 }}>
-              {blockedGroups.length===0
-                ? <div style={{ color:C.text3, fontSize:"0.78rem", marginTop:10, fontStyle:"italic" }}>No days off scheduled.</div>
-                : blockedGroups.map(g=>{
-                    const single = g.start===g.end;
-                    const fmt = (d)=>new Date(d+"T00:00").toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"});
-                    return (
-                      <div key={g.start} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderTop:`1px solid ${C.surface3}`, gap:10 }}>
-                        <div style={{ minWidth:0 }}>
-                          <div style={{ color:C.text, fontSize:"0.85rem", fontWeight:600 }}>{single ? fmt(g.start) : `${fmt(g.start)} – ${fmt(g.end)}`}</div>
-                          {!single && <div style={{ color:C.text3, fontSize:"0.72rem", marginTop:1 }}>{g.dates.length} days</div>}
-                        </div>
-                        <button onClick={()=>removeRange(g.dates)} title={single?"Remove":"Remove range"} style={{ background:"transparent", border:"none", cursor:"pointer", color:C.red, padding:4, display:"flex", flexShrink:0 }}><Ico d={P.close} size={15} color={C.red}/></button>
-                      </div>
-                    );
-                  })
-              }
-            </div>
-            <div style={{ color:C.text3, fontSize:"0.72rem", marginTop:12, display:"flex", gap:5, alignItems:"flex-start" }}><Ico d={P.alert} size={11} color={C.text3} style={{marginTop:2}}/>On these days customers see an "away" notice and can't schedule appointments.</div>
-          </Card>
+           <BlockDaysOff blockedDates={blockedDates} onBlockedDates={onBlockedDates}/>
         </>}
 
         {tab==="settings"&&<>
