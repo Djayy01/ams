@@ -20,7 +20,8 @@ export const Dashboard = ({ availability, onAvailability, bizName, onBizName, on
   const [alertsOn,setAlertsOn]=useState(getAlerts);
   const [schedView,setSchedView]=useState("today");
   const [history,setHistory]=useState(null);
-  const [dateDraft,setDateDraft]=useState("");
+  const [startDraft,setStartDraft]=useState("");
+  const [endDraft,setEndDraft]=useState("");
   const [showDismissed,setShowDismissed]=useState(false);
   const [sortBy,setSortBy]=useState("newest");
   const [statusFilter,setStatusFilter]=useState("all");
@@ -174,13 +175,29 @@ export const Dashboard = ({ availability, onAvailability, bizName, onBizName, on
 
   const toggleDay = (day) => { const next={...availability,[day]:{...availability[day],on:!availability[day].on}}; onAvailability(next); };
   const setTime = (day,field,val) => { const next={...availability,[day]:{...availability[day],[field]:val}}; onAvailability(next); };
-  const addBlocked = () => { if(dateDraft && !(blockedDates||[]).includes(dateDraft)){ onBlockedDates([...(blockedDates||[]), dateDraft]); } setDateDraft(""); };
-  const removeBlocked = (d) => onBlockedDates((blockedDates||[]).filter(x=>x!==d));
+  const addRange = () => {
+    if(!startDraft) return;
+    const end = endDraft && endDraft >= startDraft ? endDraft : startDraft;
+    const set = new Set(blockedDates || []);
+    let cur = new Date(startDraft+"T00:00"); const stop = new Date(end+"T00:00");
+    while(cur <= stop){ set.add(ymd(cur)); cur.setDate(cur.getDate()+1); }
+    onBlockedDates([...set].sort());
+    setStartDraft(""); setEndDraft("");
+  };
+  const removeRange = (dates) => onBlockedDates((blockedDates||[]).filter(x => !dates.includes(x)));
+  const blockedGroups = (() => {
+    const groups = [];
+    for(const d of [...(blockedDates||[])].sort()){
+      const last = groups[groups.length-1];
+      if(last && (new Date(d+"T00:00") - new Date(last.end+"T00:00"))/86400000 === 1){ last.end = d; last.dates.push(d); }
+      else groups.push({ start:d, end:d, dates:[d] });
+    }
+    return groups;
+  })();
 
   const TABS=[{id:"queue",label:"Queue",icon:"list"},{id:"schedule",label:"Schedule",icon:"cal"},{id:"avail",label:"Hours",icon:"clock"},{id:"settings",label:"Settings",icon:"cog"}];
   const STATS=[[pending,"Pending",C.amber,"alert"],[active,"Active",C.blue,"zap"],[doneToday,"Done Today",C.green,"check"],[allDone,"All-Time",C.sky,"list"]];
   const av = availability || DEFAULT_AVAIL;
-  const sortedBlocked=[...(blockedDates||[])].sort();
 
   return (
     <div style={{ maxWidth:700, margin:"0 auto" }}>
@@ -365,20 +382,37 @@ export const Dashboard = ({ availability, onAvailability, bizName, onBizName, on
 
           <SectionHead icon="cal">Time Off</SectionHead>
           <Card>
-            <Lbl icon="cal">Block a day off</Lbl>
-            <div style={{ display:"flex", gap:8, marginTop:8, marginBottom: sortedBlocked.length?14:0 }}>
-              <input type="date" min={ymd(new Date())} value={dateDraft} onChange={e=>setDateDraft(e.target.value)} style={{ ...fieldStyle, flex:1 }}/>
-              <Btn small onClick={addBlocked} icon="check" disabled={!dateDraft}>Add</Btn>
+            <Lbl icon="cal">Block days off</Lbl>
+            <div style={{ display:"flex", gap:8, marginTop:8, flexWrap:"wrap", alignItems:"flex-end" }}>
+              <div style={{ flex:1, minWidth:120 }}>
+                <div style={{ color:C.text3, fontSize:"0.66rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>From</div>
+                <input type="date" min={ymd(new Date())} value={startDraft} onChange={e=>{ setStartDraft(e.target.value); if(endDraft && e.target.value>endDraft) setEndDraft(e.target.value); }} style={{ ...fieldStyle }}/>
+              </div>
+              <div style={{ flex:1, minWidth:120 }}>
+                <div style={{ color:C.text3, fontSize:"0.66rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>To <span style={{ textTransform:"none", fontWeight:500 }}>(optional)</span></div>
+                <input type="date" min={startDraft || ymd(new Date())} value={endDraft} onChange={e=>setEndDraft(e.target.value)} style={{ ...fieldStyle }}/>
+              </div>
+              <Btn small onClick={addRange} icon="check" disabled={!startDraft}>Add</Btn>
             </div>
-            {sortedBlocked.length===0
-              ? <div style={{ color:C.text3, fontSize:"0.78rem", marginTop:10, fontStyle:"italic" }}>No days off scheduled.</div>
-              : sortedBlocked.map(d=>(
-                  <div key={d} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderTop:`1px solid ${C.surface3}` }}>
-                    <span style={{ color:C.text, fontSize:"0.85rem", fontWeight:600 }}>{new Date(d+"T00:00").toLocaleDateString([], {weekday:"short", year:"numeric", month:"short", day:"numeric"})}</span>
-                    <button onClick={()=>removeBlocked(d)} style={{ background:"transparent", border:"none", cursor:"pointer", color:C.red, padding:4, display:"flex" }}><Ico d={P.close} size={15} color={C.red}/></button>
-                  </div>
-                ))
-            }
+            <div style={{ color:C.text3, fontSize:"0.72rem", marginTop:8 }}>Leave "To" empty to block a single day, or set it to block a whole range.</div>
+            <div style={{ marginTop: blockedGroups.length?14:0 }}>
+              {blockedGroups.length===0
+                ? <div style={{ color:C.text3, fontSize:"0.78rem", marginTop:10, fontStyle:"italic" }}>No days off scheduled.</div>
+                : blockedGroups.map(g=>{
+                    const single = g.start===g.end;
+                    const fmt = (d)=>new Date(d+"T00:00").toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"});
+                    return (
+                      <div key={g.start} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderTop:`1px solid ${C.surface3}`, gap:10 }}>
+                        <div style={{ minWidth:0 }}>
+                          <div style={{ color:C.text, fontSize:"0.85rem", fontWeight:600 }}>{single ? fmt(g.start) : `${fmt(g.start)} – ${fmt(g.end)}`}</div>
+                          {!single && <div style={{ color:C.text3, fontSize:"0.72rem", marginTop:1 }}>{g.dates.length} days</div>}
+                        </div>
+                        <button onClick={()=>removeRange(g.dates)} title={single?"Remove":"Remove range"} style={{ background:"transparent", border:"none", cursor:"pointer", color:C.red, padding:4, display:"flex", flexShrink:0 }}><Ico d={P.close} size={15} color={C.red}/></button>
+                      </div>
+                    );
+                  })
+              }
+            </div>
             <div style={{ color:C.text3, fontSize:"0.72rem", marginTop:12, display:"flex", gap:5, alignItems:"flex-start" }}><Ico d={P.alert} size={11} color={C.text3} style={{marginTop:2}}/>On these days customers see an "away" notice and can't schedule appointments.</div>
           </Card>
         </>}
