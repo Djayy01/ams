@@ -6,6 +6,14 @@ import { ymd, DEFAULT_AVAIL } from "../helpers";
 import { getSavedCustomer, saveCustomer, clearSavedCustomer } from "../api";
 import { Hero, Card, Lbl, Inp, Tarea, Toggle, Btn, ErrorBar, MapEmbed } from "./ui";
 
+// Format a US phone as the user types: caps at 10 digits → (555) 123-4567
+const formatPhone = (v) => {
+  const d = String(v || "").replace(/\D/g, "").slice(0, 10);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `(${d.slice(0,3)}) ${d.slice(3)}`;
+  return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
+};
+
 export const CustomerForm = ({ onSubmit, availability, busy, onTrack, blockedDates }) => {
   const m = useMobile();
   const { t } = useLang();
@@ -16,7 +24,21 @@ export const CustomerForm = ({ onSubmit, availability, busy, onTrack, blockedDat
   const [err,setErr] = useState("");
   const [mapLoc,setMapLoc] = useState("");
   const [submitting,setSubmitting] = useState(false);
+  const [locating,setLocating] = useState(false);
   const set = (k,v) => setF(p=>({...p,[k]:v}));
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) { setErr(t("geoUnavailable")); return; }
+    setLocating(true); setErr("");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const coords = `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`;
+        set("loc", coords); setMapLoc(coords); setLocating(false);
+      },
+      (e) => { setLocating(false); setErr(e.code === 1 ? t("geoDenied") : t("geoUnavailable")); },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
   const blocked = blockedDates || [];
   const todayBlocked = blocked.includes(ymd(new Date()));
   const schedBlocked = f.schedTime && blocked.includes(f.schedTime.slice(0,10));
@@ -36,6 +58,7 @@ export const CustomerForm = ({ onSubmit, availability, busy, onTrack, blockedDat
 
   const submit = async () => {
     for(const k of ["name","phone","loc","year","make","model","issue"]) if(!f[k].trim()){setErr(t("fillRequired"));return;}
+    if(f.phone.replace(/\D/g,"").length !== 10){ setErr(t("phoneInvalid")); return; }
     if(f.urg==="Scheduled"&&!f.schedTime){setErr(t("pickTime"));return;}
     if(schedBlocked){ setErr(t("dateUnavailable")); return; }
     setErr(""); setSubmitting(true);
@@ -89,11 +112,14 @@ export const CustomerForm = ({ onSubmit, availability, busy, onTrack, blockedDat
 
           <input type="text" name="company" tabIndex={-1} autoComplete="off" aria-hidden="true" value={f.company} onChange={e=>set("company",e.target.value)} style={{ position:"absolute", left:"-9999px", width:1, height:1, opacity:0 }}/>
 
-          <Inp label={t("yourName")} icon="user" placeholder={t("fullName")} value={f.name} onChange={e=>set("name",e.target.value)}/>
-          <Inp label={t("phoneNumber")} icon="phone" type="tel" placeholder="(555) 000-0000" value={f.phone} onChange={e=>set("phone",e.target.value)}/>
+          <Inp label={t("yourName")} icon="user" maxLength={60} placeholder={t("fullName")} value={f.name} onChange={e=>set("name",e.target.value)}/>
+          <Inp label={t("phoneNumber")} icon="phone" type="tel" inputMode="numeric" maxLength={14} placeholder="(555) 000-0000" value={f.phone} onChange={e=>set("phone",formatPhone(e.target.value))}/>
           <div style={{ marginBottom:14 }}>
             <Lbl icon="loc">{t("yourLocation")}</Lbl>
-            <input placeholder={t("addressPlaceholder")} value={f.loc} onChange={e=>set("loc",e.target.value)} onBlur={e=>setMapLoc(e.target.value)} style={fieldStyle}/>
+            <input maxLength={120} placeholder={t("addressPlaceholder")} value={f.loc} onChange={e=>set("loc",e.target.value)} onBlur={e=>setMapLoc(e.target.value)} style={fieldStyle}/>
+            <button type="button" onClick={useMyLocation} disabled={locating} style={{ marginTop:8, display:"inline-flex", alignItems:"center", gap:7, background:`${C.blue}0d`, border:`1px solid ${C.blue}33`, color:C.blue, borderRadius:9, padding:"8px 12px", fontSize:"0.78rem", fontWeight:700, cursor:locating?"default":"pointer", opacity:locating?0.7:1 }}>
+              <Ico d={P.nav} size={13} color={C.blue}/>{locating ? t("locating") : t("useMyLocation")}
+            </button>
             <MapEmbed location={mapLoc}/>
           </div>
           <Lbl icon={f.svc==="Towing"?"tow":"wrench"}>{t("serviceType")}</Lbl>
@@ -104,7 +130,7 @@ export const CustomerForm = ({ onSubmit, availability, busy, onTrack, blockedDat
               <input key={k} placeholder={l} value={f[k]} onChange={e=>set(k,e.target.value)} style={{ ...fieldStyle, padding:m?"11px 8px":"11px 12px", fontSize:"0.85rem" }}/>
             ))}
           </div>
-          <Tarea label={t("describeIssue")} icon="alert" placeholder={t("issuePlaceholder")} value={f.issue} onChange={e=>set("issue",e.target.value)}/>
+          <Tarea label={t("describeIssue")} icon="alert" maxLength={500} placeholder={t("issuePlaceholder")} value={f.issue} onChange={e=>set("issue",e.target.value)}/>
           {f.svc==="Mechanical" ? (
             <>
               <Lbl icon="cal">{t("appointment")}</Lbl>
